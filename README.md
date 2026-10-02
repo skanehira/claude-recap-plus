@@ -1,5 +1,7 @@
 # claude-session-brief
 
+![d548973e](/images/README.ja/d548973e.png)
+
 [日本語](README.ja.md)
 
 A [Claude Code](https://claude.com/claude-code) mod that keeps a brief of the session right above the prompt. When you run several sessions side by side, switching to one tells you at a glance what it is for and where it stands, without scrolling back through the conversation.
@@ -142,6 +144,14 @@ Reading and searching files is not sent, nor is any other tool. Subagent turns a
 
 When Haiku gives no usable brief (an API error, an empty reply, the 30 seconds running out, a reply that is not the brief asked for), the mod writes one in its place: the previous brief with its status replaced by the first line of the final answer that is not a heading. Before there is any brief, the purpose is the first line of your request and the other parts are empty. That brief is saved like any other. When the answer has no such line, the brief stays as it was.
 
+The mod counts its calls. Each session's entry in the store (see [Where the briefs are kept](#where-the-briefs-are-kept)) holds how many times Haiku was called for the session and the input and output tokens those calls used, as Claude Code reports them. Calls whose reply held no usable brief count too. To list them for every session:
+
+```bash
+jq -r 'to_entries[] | "\(.key)\t\(.value.usage.calls // 0)\t\(.value.usage.inputTokens // 0)\t\(.value.usage.outputTokens // 0)"' ~/.claude/plugins/store/session-brief_*.json
+```
+
+Each line holds the key, the number of calls, the input tokens and the output tokens. An entry saved before the mod began counting starts from 0. A call is written to the store with the next brief saved for the same conversation, so the calls of a process that quits before that are not counted. The calls are billed the way your session is: to put a price on the tokens, use Haiku's rates on [Anthropic's pricing page](https://www.anthropic.com/pricing#api).
+
 ## Behaviour to know
 
 ### Dialogs hide the band
@@ -159,11 +169,11 @@ This covers sessions from before you installed the mod. It also covers a session
 
 ### Where the briefs are kept
 
-In the mod's own store: a JSON file in `~/.claude/plugins/store/` whose name starts with `session-brief_`. Each way of loading the mod has a file of its own; loaded with `--plugin-dir`, for example, it is `session-brief_inline-<hash>.json`. The file holds one entry per session, under the key `brief:<session id>`: the six parts, a fingerprint of the last turn's request and answer, and when it was saved. The newest 200 sessions are kept; older entries are removed when a session starts.
+In the mod's own store: a JSON file in `~/.claude/plugins/store/` whose name starts with `session-brief_`. Each way of loading the mod has a file of its own; loaded with `--plugin-dir`, for example, it is `session-brief_inline-<hash>.json`. The file holds one entry per session, under the key `brief:<session id>`: the six parts, a fingerprint of the last turn's request and answer, when it was saved, and the count of Haiku calls with their tokens (see [Cost and what is sent](#cost-and-what-is-sent)). The newest 200 sessions are kept; older entries are removed when a session starts.
 
 ### `/clear` starts over
 
-The new conversation gets its own brief, saved under its new session id.
+The new conversation gets its own brief, saved under its new session id, and counts its Haiku calls from 0.
 
 ## Troubleshooting
 
@@ -214,7 +224,7 @@ Each brief is rewritten from the previous one, so a mistake can stay. To have it
    done
    ```
 
-   To start over for every session, delete the store files instead.
+   Removing the entry also sets the session's count of Haiku calls back to 0. To start over for every session, delete the store files instead.
 3. Open the session again with `claude --resume`. The mod reads the conversation back and writes a new brief.
 
 ## Uninstall
