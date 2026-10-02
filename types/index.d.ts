@@ -2,12 +2,14 @@ export type Question = { header: string; question: string }
 
 export type QuestionAnswer = Question & {
   turn: number
+  /** null while the question waits; '' when it was dismissed unanswered. */
   answer: string | null
 }
 
 export type TurnEntry = {
   turn: number
-  ask: string
+  /** null for a turn that began with no request (a continuation). */
+  ask: string | null
   answer: string | null
   startedAt: number
   endedAt: number | null

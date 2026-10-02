@@ -5,5 +5,17 @@
   "author": {
     "name": "skanehira"
   },
+  "userConfig": {
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "description": "Language of the band, the pane and the summary",
+      "options": [
+        "en",
+        "ja"
+      ],
+      "default": "en"
+    }
+  },
   "types": "./types/index.d.ts"
 }

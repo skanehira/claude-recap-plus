@@ -16,7 +16,9 @@ import {
   statusLine,
   summaryFromReply,
   summaryRequest,
+  wordsFor,
 } from './brief'
+import type { Words } from './brief'
 
 const brief = atom({ plugin: 'session-brief', key: 'brief' } as const, EMPTY)
 
@@ -33,9 +35,9 @@ const COLLAPSE_MARK_CELLS = 4
  * answer's own first line stands in when the model gives nothing usable (a
  * backend without Haiku, an error, a timeout).
  */
-const summarize = async ($: EngineInterface) => {
+const summarize = async ($: EngineInterface, words: Words) => {
   const current = await read($, brief)
-  const request = summaryRequest(current)
+  const request = summaryRequest(current, words)
   const turn = current.turns.at(-1)
   if (request === undefined || turn === undefined) return
 
@@ -57,15 +59,17 @@ const summarize = async ($: EngineInterface) => {
  * no turn is held up by the model call and the call is not cut short when
  * that dispatch ends.
  */
-const summarizeLater = ($: EngineInterface) => {
+const summarizeLater = ($: EngineInterface, words: Words) => {
   $.clock.after(0, () => {
-    summarize($).catch((error: unknown) =>
+    summarize($, words).catch((error: unknown) =>
       $.ui.log(`session-brief: summary failed: ${String(error)}`, { to: 'debug' }),
     )
   })
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  const words = wordsFor(options.language)
+
   // Set by session.start, which fires again on every reload of this module.
   let isInteractive = false
 
@@ -77,7 +81,7 @@ export const register: Register = on => {
     $.clock.every(REDRAW_MS, () => $.ui.invalidate('ui.render'))
     await $.command.register({
       name: 'brief',
-      description: 'このセッションの要約・ターン・質問と回答をパネルで開く',
+      description: words.command,
       immediate: true,
     })
 
@@ -87,7 +91,7 @@ export const register: Register = on => {
       const rebuilt = rebuild(await $.session.messages())
       if (rebuilt.turns.length > 0) {
         await update($, brief, () => rebuilt)
-        summarizeLater($)
+        summarizeLater($, words)
       }
     }
 
@@ -117,7 +121,7 @@ export const register: Register = on => {
     if (isInteractive && e.agentId === undefined) {
       const now = await $.clock.now()
       await update($, brief, current => completeTurn(current, e.answer, now))
-      summarizeLater($)
+      summarizeLater($, words)
     }
 
     return next(e)
@@ -153,7 +157,7 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        {paneRows(current).map(section => (
+        {paneRows(current, words).map(section => (
           <Box flexDirection="column" marginBottom={1}>
             <Text bold>{section.title}</Text>
             {section.rows.map(row => (
@@ -176,15 +180,15 @@ export const register: Register = on => {
       <Box flexDirection="column">
         <Box>
           <Box flexGrow={1} flexShrink={1}>
-            <Text wrap="truncate-end">{statusLine(current, now)}</Text>
+            <Text wrap="truncate-end">{statusLine(current, now, words)}</Text>
           </Box>
           {/* The engine draws its collapse mark over the band's last cells. */}
           <Box flexShrink={0} marginRight={COLLAPSE_MARK_CELLS}>
-            <Button key="open" label="詳細" hotkey="b" plain dimColor onPress={() => $.ui.open(PANE)} />
+            <Button key="open" label={words.details} hotkey="b" plain dimColor onPress={() => $.ui.open(PANE)} />
           </Box>
         </Box>
         <Text wrap="truncate-end" dimColor>
-          {purposeLine(current)}
+          {purposeLine(current, words)}
         </Text>
       </Box>
     )
