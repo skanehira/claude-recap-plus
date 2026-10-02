@@ -29,8 +29,22 @@ const brief = atom({ plugin: 'session-brief', key: 'brief' } as const, EMPTY)
 
 const PANE_ID = 'session-brief'
 
-// The cells the terminal's ` [-]` mark covers at the band's right edge.
+// The cells the terminal's ` [-]` mark covers at the band's right edge, and
+// its ` ✕` mark at the top right of a pane.
 const COLLAPSE_MARK_CELLS = 4
+const CLOSE_MARK_CELLS = 3
+
+// The share of the terminal the pane asks for when docked beside the
+// transcript: the engine's own share is about three quarters, a little wide
+// for six short parts. A width the person dragged the dock to still wins.
+const PANE_SHARE = 0.66
+const PANE_MIN_COLUMNS = 40
+
+// Both buttons answer this action, so its chord (ctrl+x b in the README's
+// key bindings) opens the pane from the band and closes it from the pane: a
+// pane's button wins over the band's. The engine handles the action itself
+// only inside the diff panel.
+const TOGGLE_ACTION = 'app:cycleDiffBase'
 
 // How many sessions' briefs the store keeps, the newest; one is a few KB.
 const STORED_SESSIONS = 200
@@ -153,7 +167,14 @@ export const register: Register = on => {
   // Set by session.start, which fires again on every reload of this module.
   let isInteractive = false
   let locale = localeFor(undefined)
-  const pane = () => ({ id: PANE_ID, title: locale.words.paneTitle, focus: true, closeOnEscape: true }) as const
+  const pane = (terminalColumns: number) =>
+    ({
+      id: PANE_ID,
+      title: locale.words.paneTitle,
+      focus: true,
+      closeOnEscape: true,
+      columns: Math.max(PANE_MIN_COLUMNS, Math.round(terminalColumns * PANE_SHARE)),
+    }) as const
 
   on('session.start', async ($, e, next) => {
     isInteractive = e.isInteractive
@@ -225,8 +246,8 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'brief' }, async $ => {
-    await $.ui.open(pane())
+  on('command.run', { command: 'brief' }, async ($, e) => {
+    await $.ui.open(pane(e.presentation.columns))
 
     return {}
   })
@@ -235,8 +256,22 @@ export const register: Register = on => {
     const current = await read($, brief)
     const { Box, Text } = $.ui.resolve(e)
 
+    const { Button } = $.ui.resolve(e)
+
     return (
       <Box flexDirection="column">
+        {/* The engine draws the pane's close mark over its top right cells. */}
+        <Box justifyContent="flex-end" marginRight={CLOSE_MARK_CELLS}>
+          <Button
+            key="close"
+            label={locale.words.close}
+            hotkey="b"
+            action={TOGGLE_ACTION}
+            plain
+            dimColor
+            onPress={() => $.ui.close({ id: PANE_ID })}
+          />
+        </Box>
         {paneSections(current, locale.words).map(section => (
           <Box flexDirection="column" marginBottom={1}>
             <Text bold wrap="wrap">
@@ -270,17 +305,14 @@ export const register: Register = on => {
           </Box>
           {/* The engine draws its collapse mark over the band's last cells. */}
           <Box flexShrink={0} marginRight={COLLAPSE_MARK_CELLS}>
-            {/* `action` lets a chord bound to app:cycleDiffBase (ctrl+x b in the
-                README's keybindings) press this from the prompt; the engine only
-                handles that action itself inside the diff panel. */}
             <Button
               key="open"
               label={locale.words.details}
               hotkey="b"
-              action="app:cycleDiffBase"
+              action={TOGGLE_ACTION}
               plain
               dimColor
-              onPress={() => $.ui.open(pane())}
+              onPress={() => $.ui.open(pane(e.props.bodyColumns))}
             />
           </Box>
         </Box>

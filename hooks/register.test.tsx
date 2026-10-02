@@ -674,8 +674,10 @@ test('/brief と帯の詳細ボタンは Pane を開き、/brief は会話に行
   await ui.press({ key: 'open' })
   await ui.unmount()
 
+  // Docked beside the transcript the pane asks for 66% of the terminal's width:
+  // /brief reads it off the command (90 columns), the band's button off the band (120).
   const pane = { id: PANE_ID, title: 'Session brief', focus: true, closeOnEscape: true }
-  expect([ran, opened]).toEqual([{}, [pane, pane]])
+  expect([ran, opened]).toEqual([{}, [{ ...pane, columns: 59 }, { ...pane, columns: 79 }]])
 })
 
 test('Claude Code の language が Japanese なら見出しを日本語にし、Haiku に Japanese で書かせる', async ($, on) => {
@@ -714,7 +716,7 @@ test('Claude Code の language が Japanese なら見出しを日本語にし、
     BRIEF.next,
   ])
   expect(requests[0]?.system?.split('\n').at(-1)).toBe('Write every value in Japanese.')
-  expect(opened).toEqual([{ id: PANE_ID, title: 'セッション概要', focus: true, closeOnEscape: true }])
+  expect(opened).toEqual([{ id: PANE_ID, title: 'セッション概要', focus: true, closeOnEscape: true, columns: 59 }])
 })
 
 test('前のターンの返答が後から届いても、新しいターンの概要を上書きしない', async ($, on) => {
@@ -889,4 +891,27 @@ test('/clear の直後に依頼を始めても、その後に分かった新し�
   await clock.settle()
 
   expect(store.get('brief:sess-2')).toEqual({ sections: BRIEF, lastAsk: 'T1 クリア直後の依頼', savedAt: START + 1_000 })
+})
+
+test('Pane の閉じるボタンは Pane を閉じる (ctrl+x b の 2 回目で閉じるための受け口)', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  standInForEngine(on)
+  recordModelCalls(on)
+  const closed: unknown[] = []
+  on('ui.close', (_$, e) => {
+    closed.push(e)
+
+    return { value: undefined }
+  })
+
+  await startInteractive($)
+  await runTurn($, clock, 'パネルを作りたい', '作りました', 't1')
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount(paneOn(surface))
+    await ui.press({ key: 'close' })
+    await ui.unmount()
+  }
+
+  const byThePlugin = { id: PANE_ID, origin: { kind: 'plugin' } }
+  expect(closed).toEqual([byThePlugin, byThePlugin])
 })
