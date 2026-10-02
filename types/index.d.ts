@@ -34,8 +34,18 @@ export type Brief = {
   /** What a compaction kept of the turns before it, read back on a resume. */
   background: string | null
   isWorking: boolean
+  /** The session the brief is of; null until the mod has opened the conversation. */
+  sessionId: string | null
   /** Counts the conversations this process has held; a /clear or /resume moves it on. */
   epoch: number
+}
+
+/** What the store keeps of a session's brief, under `brief:<session id>`. */
+export type StoredBrief = {
+  sections: Sections
+  /** The last turn the brief was written after, as `T<n> <request>`; a different one means the session moved on. */
+  lastAsk: string
+  savedAt: number
 }
 
 declare module 'claude-code' {

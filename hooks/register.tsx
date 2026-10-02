@@ -11,6 +11,7 @@ import {
   completeTurn,
   fallbackSections,
   freeTextOf,
+  lastAskOf,
   localeFor,
   paneSections,
   parseSections,
@@ -19,6 +20,7 @@ import {
   setSections,
   startOver,
   startTurn,
+  storedBriefOf,
   summaryRequest,
 } from './brief'
 import type { Locale } from './brief'
@@ -30,6 +32,14 @@ const PANE_ID = 'session-brief'
 // The cells the terminal's ` [-]` mark covers at the band's right edge.
 const COLLAPSE_MARK_CELLS = 4
 
+// How many sessions' briefs the store keeps, the newest; one is a few KB.
+const STORED_SESSIONS = 200
+const storeKey = (sessionId: string): string => `brief:${sessionId}`
+
+// How long a /clear or an in-process /resume is watched for the session it starts.
+const SESSION_POLL_MS = 500
+const SESSION_POLL_TRIES = 20
+
 /**
  * Asks Haiku to rewrite the brief after the last turn and keeps it; when the
  * model gives nothing usable (a backend without Haiku, an error, a reply that
@@ -39,8 +49,8 @@ const summarize = async ($: EngineInterface, locale: Locale) => {
   const current = await read($, brief)
   const request = summaryRequest(current, locale)
   const turn = current.turns.at(-1)
-  if (request === undefined || turn === undefined) return
-  const { epoch } = current
+  const turnNumber = turn?.turn ?? 0
+  const { epoch, sessionId } = current
 
   const reply = await $.model.complete({
     model: 'haiku',
@@ -53,8 +63,17 @@ const summarize = async ($: EngineInterface, locale: Locale) => {
     (reply.isAnswered ? parseSections(reply.text) : undefined) ?? fallbackSections(current, turn, locale.words)
   if (sections === undefined) return
 
-  // A /clear or /resume while the model answered started another conversation.
-  await update($, brief, latest => (latest.epoch === epoch ? setSections(latest, sections, turn.turn) : latest))
+  // A /clear or /resume while the model answered started another conversation,
+  // and a later turn's brief may have landed first.
+  let isApplied = false
+  await update($, brief, latest => {
+    isApplied = latest.epoch === epoch && turnNumber >= latest.sectionsTurn
+
+    return isApplied ? setSections(latest, sections, turnNumber) : latest
+  })
+  if (isApplied && sessionId !== null) {
+    await $.store.set(storeKey(sessionId), { sections, lastAsk: lastAskOf(current), savedAt: await $.clock.now() })
+  }
 }
 
 /**
@@ -70,6 +89,66 @@ const summarizeLater = ($: EngineInterface, locale: Locale) => {
   })
 }
 
+/**
+ * Opens the conversation the session now holds: reads it back, and shows the
+ * brief the store kept for it when nothing has happened since; otherwise
+ * analyzes it now, when there is anything to analyze.
+ */
+const openSession = async ($: EngineInterface, locale: Locale) => {
+  const sessionId = await $.session.id()
+  const rebuilt = rebuild(await $.session.messages())
+  const stored = storedBriefOf(await $.store.get(storeKey(sessionId)))
+  const isUpToDate = stored !== undefined && stored.lastAsk === lastAskOf(rebuilt)
+
+  await update($, brief, current => ({
+    ...rebuilt,
+    sessionId,
+    epoch: current.epoch,
+    ...(isUpToDate ? { sections: stored.sections, sectionsTurn: rebuilt.turns.at(-1)?.turn ?? 0 } : {}),
+  }))
+  if (!isUpToDate && (rebuilt.turns.length > 0 || rebuilt.background !== null)) summarizeLater($, locale)
+}
+
+/**
+ * After a /clear or an in-process /resume no session.start comes, and the
+ * session that follows is not there yet when the old one ends: watch for the
+ * id to change, then open that session. When a turn has already begun in it,
+ * keep that turn and only learn the id, so its brief is saved under it.
+ */
+const followNextSession = ($: EngineInterface, endedId: string, locale: Locale) => {
+  let tries = 0
+  const timer = $.clock.every(SESSION_POLL_MS, () => {
+    tries += 1
+    $.session
+      .id()
+      .then(async sessionId => {
+        if (sessionId === endedId) {
+          if (tries >= SESSION_POLL_TRIES) timer.cancel()
+
+          return
+        }
+        timer.cancel()
+        const current = await read($, brief)
+        if (current.sessionId !== null) return
+        if (current.turns.length === 0) await openSession($, locale)
+        else await update($, brief, latest => (latest.sessionId === null ? { ...latest, sessionId } : latest))
+      })
+      .catch((error: unknown) => $.ui.log(`session-brief: following the session failed: ${String(error)}`, { to: 'debug' }))
+  })
+}
+
+/** Keeps the newest briefs in the store; the oldest go first. */
+const pruneStore = async ($: EngineInterface) => {
+  const keys = (await $.store.keys()).filter(key => key.startsWith('brief:'))
+  if (keys.length <= STORED_SESSIONS) return
+
+  const saved = await Promise.all(
+    keys.map(async key => ({ key, savedAt: storedBriefOf(await $.store.get(key))?.savedAt ?? 0 })),
+  )
+  const oldest = saved.sort((a, b) => a.savedAt - b.savedAt).slice(0, keys.length - STORED_SESSIONS)
+  await Promise.all(oldest.map(one => $.store.delete(one.key)))
+}
+
 export const register: Register = on => {
   // Set by session.start, which fires again on every reload of this module.
   let isInteractive = false
@@ -83,18 +162,16 @@ export const register: Register = on => {
     locale = localeFor((await $.settings.read()).language)
     await $.command.register({ name: 'brief', description: locale.words.command, immediate: true })
 
-    // Empty here means the mod meets this conversation for the first time: a
-    // resumed session, one that ran before the mod was installed, or a new one
-    // with nothing to read back. A reload of this module finds its state kept.
-    if ((await read($, brief)).turns.length === 0) {
-      const rebuilt = rebuild(await $.session.messages())
-      // Right after a compaction there may be no turn to show yet, but what the
-      // compaction kept still feeds the first brief of the turns to come.
-      if (rebuilt.turns.length > 0 || rebuilt.background !== null) {
-        await update($, brief, current => ({ ...rebuilt, epoch: current.epoch }))
-      }
-      if (rebuilt.turns.length > 0) summarizeLater($, locale)
+    // No session id yet means the mod meets this conversation for the first
+    // time: a resumed session, one that ran before the mod was installed, or a
+    // new one. A reload of this module finds its state kept, and analyzes it
+    // only when no brief was written yet.
+    const current = await read($, brief)
+    if (current.sessionId === null) await openSession($, locale)
+    else if (current.sections === null && (current.turns.length > 0 || current.background !== null)) {
+      summarizeLater($, locale)
     }
+    await pruneStore($)
 
     return next(e)
   })
@@ -104,6 +181,7 @@ export const register: Register = on => {
     // another one; neither raises session.start again, so start over here.
     if (isInteractive && (e.reason === 'clear' || e.reason === 'resume')) {
       await update($, brief, startOver)
+      followNextSession($, e.sessionId, locale)
     }
 
     return next(e)
@@ -175,7 +253,8 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const current = await read($, brief)
-    if (!isInteractive || e.props.hasSurvey || current.turns.length === 0) return next(e)
+    const isEmpty = current.turns.length === 0 && current.sections === null
+    if (!isInteractive || e.props.hasSurvey || isEmpty) return next(e)
     // The pane holds the same purpose and status; a band beside a docked pane
     // would only repeat them in a narrow column, many rows tall.
     if ((await $.ui.panes()).some(one => one.id === PANE_ID && one.isShown)) return next(e)

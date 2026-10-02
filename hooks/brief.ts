@@ -1,6 +1,6 @@
 import type { SessionMessage } from 'claude-code'
 
-import type { Brief, Question, Sections, TurnEntry } from '../types'
+import type { Brief, Question, Sections, StoredBrief, TurnEntry } from '../types'
 
 /** The words the band, the pane and the command are drawn in. */
 export type Words = {
@@ -75,6 +75,7 @@ export const EMPTY: Brief = {
   sectionsTurn: 0,
   background: null,
   isWorking: false,
+  sessionId: null,
   epoch: 0,
 }
 
@@ -288,23 +289,18 @@ const historyLines = (brief: Brief, words: Words): string[] => {
  * there is one, the history), the turn's request and answer, the questions
  * answered in it and what its tools did.
  */
-export const summaryRequest = (
-  brief: Brief,
-  { words, language }: Locale,
-): { system: string; prompt: string } | undefined => {
+export const summaryRequest = (brief: Brief, { words, language }: Locale): { system: string; prompt: string } => {
   const turn = lastTurn(brief)
-  if (turn === undefined) return undefined
-
   const answered = brief.questions
-    .filter(one => one.turn === turn.turn)
+    .filter(one => turn !== undefined && one.turn === turn.turn)
     .map(one => `${one.question} → ${one.answer === null || one.answer === '' ? words.noAnswer : one.answer}`)
   const prompt = [
     `<previous_brief>${brief.sections === null ? '(none)' : JSON.stringify(brief.sections)}</previous_brief>`,
     ...historyLines(brief, words),
-    `<latest_request>${turn.ask ?? words.continued}</latest_request>`,
-    `<latest_answer>${turn.answer ?? ''}</latest_answer>`,
+    `<latest_request>${turn === undefined ? '(none)' : (turn.ask ?? words.continued)}</latest_request>`,
+    `<latest_answer>${turn?.answer ?? ''}</latest_answer>`,
     ...listBlock('questions_and_answers', answered, '(none)'),
-    ...listBlock('activity', turn.activity, '(none)'),
+    ...listBlock('activity', turn?.activity ?? [], '(none)'),
   ].join('\n')
 
   return { system: systemPrompt(language), prompt }
@@ -370,7 +366,9 @@ export const fallbackSummary = (answer: string): string | undefined => {
  * first line as its status, or, with no previous one, the request as the
  * purpose and that line as the status.
  */
-export const fallbackSections = (brief: Brief, turn: TurnEntry, words: Words): Sections | undefined => {
+export const fallbackSections = (brief: Brief, turn: TurnEntry | undefined, words: Words): Sections | undefined => {
+  if (turn === undefined) return undefined
+
   const status = fallbackSummary(turn.answer ?? '')
   if (status === undefined) return undefined
   if (brief.sections !== null) return { ...brief.sections, status }
@@ -383,6 +381,22 @@ export const fallbackSections = (brief: Brief, turn: TurnEntry, words: Words): S
     pending: [],
     next: '',
   }
+}
+
+/** The last turn as the store remembers it: `T<n> <request>`, '' with no turn. */
+export const lastAskOf = (brief: Brief): string => {
+  const turn = lastTurn(brief)
+
+  return turn === undefined ? '' : `T${turn.turn} ${turn.ask ?? ''}`
+}
+
+/** A stored brief, or undefined for anything the store holds that is not one. */
+export const storedBriefOf = (value: unknown): StoredBrief | undefined => {
+  if (!isRecord(value) || typeof value.lastAsk !== 'string' || typeof value.savedAt !== 'number') return undefined
+
+  const sections = isRecord(value.sections) ? parseSections(JSON.stringify(value.sections)) : undefined
+
+  return sections === undefined ? undefined : { sections, lastAsk: value.lastAsk, savedAt: value.savedAt }
 }
 
 /** Keeps the brief of the newest turn: a slow reply for an older one is dropped. */
