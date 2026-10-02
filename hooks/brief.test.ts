@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { activityOf, fallbackSummary, localeFor, parseSections } from './brief'
+import { activityOf, fallbackSummary, localeFor, parseSections, storedBriefOf } from './brief'
 
 describe('fallbackSummary は最終回答の最初の本文行を現状の代わりにする', () => {
   const cases: [string, string, string | undefined][] = [
@@ -62,6 +62,26 @@ describe('localeFor は Claude Code の language 設定から見出しの言語�
     test(name, () => {
       const locale = localeFor(setting)
       expect([locale.words.purpose, locale.language]).toEqual([purpose, language])
+    })
+  }
+})
+
+describe('storedBriefOf は保存した概要の使用量の累計を読み、記録を始める前のものは 0 から数える', () => {
+  const sections = { purpose: 'p', status: 's', done: [], decisions: [], pending: [], next: '' }
+  const ZERO = { calls: 0, inputTokens: 0, outputTokens: 0 }
+  const kept = { calls: 3, inputTokens: 4_200, outputTokens: 1_300 }
+  const cases: [string, unknown, unknown][] = [
+    ['累計があればそのまま読む', kept, kept],
+    ['累計の無い古い保存は 0 にする', undefined, ZERO],
+    ['回数が数でない累計は 0 にする', { ...kept, calls: '3' }, ZERO],
+    ['入力トークンが数でない累計は 0 にする', { ...kept, inputTokens: null }, ZERO],
+    ['出力トークンの無い累計は 0 にする', { calls: 3, inputTokens: 4_200 }, ZERO],
+    ['負の値を持つ累計は 0 にする', { ...kept, outputTokens: -1 }, ZERO],
+  ]
+  for (const [name, usage, expected] of cases) {
+    test(name, () => {
+      const stored = { sections, turnKey: 'v1:x', savedAt: 1, ...(usage === undefined ? {} : { usage }) }
+      expect(storedBriefOf(stored)).toEqual({ sections, turnKey: 'v1:x', savedAt: 1, usage: expected })
     })
   }
 })

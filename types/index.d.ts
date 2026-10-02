@@ -25,6 +25,13 @@ export type Sections = {
   next: string
 }
 
+/** The Haiku calls a session's brief took: how many, and the tokens they read and wrote. */
+export type Usage = {
+  calls: number
+  inputTokens: number
+  outputTokens: number
+}
+
 export type Brief = {
   turns: TurnEntry[]
   questions: QuestionAnswer[]
@@ -38,6 +45,8 @@ export type Brief = {
   sessionId: string | null
   /** Counts the conversations this process has held; a /clear or /resume moves it on. */
   epoch: number
+  /** The calls made for this conversation, saved with its brief. */
+  usage: Usage
 }
 
 /** What the store keeps of a session's brief, under `brief:<session id>`. */
@@ -50,6 +59,8 @@ export type StoredBrief = {
    */
   turnKey: string
   savedAt: number
+  /** Zero for a brief saved before the mod counted its calls. */
+  usage: Usage
 }
 
 declare module 'claude-code' {

@@ -4,6 +4,7 @@ import type { EngineInterface, ModelCompleteResult, Register } from 'claude-code
 import {
   EMPTY,
   activityOf,
+  addUsage,
   answerQuestions,
   answersOf,
   askQuestions,
@@ -24,6 +25,7 @@ import {
   turnKeyOf,
 } from './brief'
 import type { Locale } from './brief'
+import type { Brief } from '../types'
 
 const brief = atom({ plugin: 'session-brief', key: 'brief' } as const, EMPTY)
 
@@ -64,7 +66,8 @@ const whyNoBrief = (reply: ModelCompleteResult): string => {
 /**
  * Asks Haiku to rewrite the brief after the last turn and keeps it; when the
  * model gives nothing usable (a backend without Haiku, an error, a reply that
- * is not the JSON asked for), the answer's own first line stands in.
+ * is not the JSON asked for), the answer's own first line stands in. Every
+ * call counts toward the conversation's usage, saved with the brief.
  */
 const summarize = async ($: EngineInterface, locale: Locale) => {
   const current = await read($, brief)
@@ -83,18 +86,27 @@ const summarize = async ($: EngineInterface, locale: Locale) => {
   const written = reply.isAnswered ? parseSections(reply.text) : undefined
   if (written === undefined) $.ui.log(`session-brief: Haiku gave no brief: ${whyNoBrief(reply)}`, { to: 'debug' })
   const sections = written ?? fallbackSections(current, turn, locale.words)
-  if (sections === undefined) return
 
   // A /clear or /resume while the model answered started another conversation,
-  // and a later turn's brief may have landed first.
-  let isApplied = false
+  // and a later turn's brief may have landed first. A call whose brief is not
+  // kept still counts; the next brief saved carries it.
+  let applied: Brief | undefined
   await update($, brief, latest => {
-    isApplied = latest.epoch === epoch && turnNumber >= latest.sectionsTurn
+    if (latest.epoch !== epoch) return latest
 
-    return isApplied ? setSections(latest, sections, turnNumber) : latest
+    const counted = addUsage(latest, reply.usage)
+    if (sections === undefined || turnNumber < latest.sectionsTurn) return counted
+    applied = setSections(counted, sections, turnNumber)
+
+    return applied
   })
-  if (isApplied && sessionId !== null) {
-    await $.store.set(storeKey(sessionId), { sections, turnKey: turnKeyOf(current), savedAt: await $.clock.now() })
+  if (applied !== undefined && sections !== undefined && sessionId !== null) {
+    await $.store.set(storeKey(sessionId), {
+      sections,
+      turnKey: turnKeyOf(current),
+      savedAt: await $.clock.now(),
+      usage: applied.usage,
+    })
   }
 }
 
@@ -126,6 +138,8 @@ const openSession = async ($: EngineInterface, locale: Locale) => {
     ...rebuilt,
     sessionId,
     epoch: current.epoch,
+    // The calls counted so far go on, whether or not the brief is up to date.
+    ...(stored === undefined ? {} : { usage: stored.usage }),
     ...(isUpToDate ? { sections: stored.sections, sectionsTurn: rebuilt.turns.at(-1)?.turn ?? 0 } : {}),
   }))
   if (!isUpToDate && (rebuilt.turns.length > 0 || rebuilt.background !== null)) summarizeLater($, locale)

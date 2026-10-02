@@ -1,4 +1,4 @@
-import type { On, SessionMessage } from 'claude-code'
+import type { ModelCompleteResult, On, SessionMessage } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
@@ -44,8 +44,10 @@ const BRIEF = {
   next: 'Publish the repository once approved',
 }
 
-const replyWith = (text: string) => ({ value: { isAnswered: true as const, text, usage: NO_USAGE } })
-const briefReply = (brief: object = BRIEF) => replyWith(JSON.stringify(brief))
+const usageOf = (inputTokens: number, outputTokens: number) => ({ ...NO_USAGE, input_tokens: inputTokens, output_tokens: outputTokens })
+
+const replyWith = (text: string, usage = NO_USAGE) => ({ value: { isAnswered: true as const, text, usage } })
+const briefReply = (brief: object = BRIEF, usage = NO_USAGE) => replyWith(JSON.stringify(brief), usage)
 
 const bandOn = (surface: (typeof SURFACES)[number], bodyColumns = 120) => ({
   plugin: PLUGIN,
@@ -121,7 +123,7 @@ const standInForEngine = (
   return store
 }
 
-const recordModelCalls = (on: On, reply: (call: number) => ReturnType<typeof replyWith> = () => briefReply()) => {
+const recordModelCalls = (on: On, reply: (call: number) => { value: ModelCompleteResult } = () => briefReply()) => {
   const requests: { model: string; system?: string; prompt: string }[] = []
   on('model.complete', (_$, e) => {
     requests.push(e)
@@ -941,7 +943,173 @@ test('概要を作ったら、最後の依頼と一緒にセッション ID ご�
   await startInteractive($)
   await runTurn($, clock, 'パネルを作りたい', '作りました', 't1')
 
-  expect(store.get('brief:sess-1')).toEqual({ sections: BRIEF, turnKey: turnKey('パネルを作りたい', '作りました'), savedAt: START })
+  expect(store.get('brief:sess-1')).toEqual({ sections: BRIEF, turnKey: turnKey('パネルを作りたい', '作りました'), savedAt: START, usage: { calls: 1, inputTokens: 0, outputTokens: 0 } })
+})
+
+test('Haiku を呼ぶたびに、呼び出し回数と入力・出力トークンの累計をセッションごとに保存する', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  const store = standInForEngine(on)
+  recordModelCalls(on, call => (call === 1 ? briefReply(BRIEF, usageOf(1_200, 400)) : briefReply(BRIEF, usageOf(1_500, 450))))
+
+  await startInteractive($)
+  await runTurn($, clock, 'パネルを作りたい', '作りました', 't1')
+  await runTurn($, clock, '公開して', '公開しました', 't2')
+
+  expect(store.get('brief:sess-1')).toEqual({
+    sections: BRIEF,
+    turnKey: turnKey('公開して', '公開しました'),
+    savedAt: START,
+    usage: { calls: 2, inputTokens: 2_700, outputTokens: 850 },
+  })
+})
+
+test('Haiku の返答が使えなかった呼び出しも累計に数え、概要を変えなかった回の分は次の保存に入れる', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  const store = standInForEngine(on)
+  recordModelCalls(on, call =>
+    call === 1
+      ? briefReply(BRIEF, usageOf(1_000, 300))
+      : call === 2
+        ? replyWith('JSON ではない返答', usageOf(900, 20))
+        : call === 3
+          ? { value: { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded', usage: NO_USAGE } }
+          : briefReply(BRIEF, usageOf(1_100, 320)),
+  )
+
+  await startInteractive($)
+  await runTurn($, clock, 'パネルを作りたい', '作りました', 't1')
+  // The answer has a sentence: the fallback brief is saved with this call counted.
+  await runTurn($, clock, '直して', '直しました', 't2')
+  const afterFallback = store.get('brief:sess-1')
+  // The answer has no sentence: the brief stays, and nothing is saved this time.
+  await runTurn($, clock, '見出しだけ返して', '# 見出し', 't3')
+  const afterUnchanged = store.get('brief:sess-1')
+  await runTurn($, clock, '公開して', '公開しました', 't4')
+
+  const fallback = {
+    sections: { ...BRIEF, status: '直しました' },
+    turnKey: turnKey('直して', '直しました'),
+    savedAt: START,
+    usage: { calls: 2, inputTokens: 1_900, outputTokens: 320 },
+  }
+  expect([afterFallback, afterUnchanged, store.get('brief:sess-1')]).toEqual([
+    fallback,
+    fallback,
+    {
+      sections: BRIEF,
+      turnKey: turnKey('公開して', '公開しました'),
+      savedAt: START,
+      usage: { calls: 4, inputTokens: 3_000, outputTokens: 640 },
+    },
+  ])
+})
+
+const SAVED_USAGE_CASES = [
+  // Up to date: opening calls no Haiku, so only the turn's call is added.
+  { name: '最新の概要', saved: turnKey('次の依頼', '実装しました'), usage: { calls: 5, inputTokens: 6_300, outputTokens: 2_010 } },
+  // Out of date: opening analyzes the session again, and that call counts too.
+  { name: '古い概要', saved: turnKey('最初の依頼', '方針を決めました'), usage: { calls: 6, inputTokens: 7_600, outputTokens: 2_420 } },
+] as const
+
+for (const { name, saved, usage } of SAVED_USAGE_CASES) {
+  test(`保存済みの累計があるセッションを開くと、保存した概要が${name}でも、その後の呼び出しをその累計に足す`, async ($, on) => {
+    const clock = mock.clock(on, { now: START })
+    const store = standInForEngine(on, RESUMED, {}, [], undefined, {
+      'brief:sess-1': {
+        sections: { ...BRIEF, purpose: '保存した概要' },
+        turnKey: saved,
+        savedAt: START - 1000,
+        usage: { calls: 4, inputTokens: 5_000, outputTokens: 1_600 },
+      },
+    })
+    recordModelCalls(on, () => briefReply(BRIEF, usageOf(1_300, 410)))
+
+    await startInteractive($)
+    await clock.settle()
+    await runTurn($, clock, '続けて', '続けました', 't9')
+
+    expect(store.get('brief:sess-1')).toEqual({ sections: BRIEF, turnKey: turnKey('続けて', '続けました'), savedAt: START, usage })
+  })
+}
+
+test('/clear の後の新しい会話は、使用量を 0 から数え直す', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  const session = { id: 'sess-1' }
+  const store = standInForEngine(on, [], {}, [], session)
+  recordModelCalls(on, call => (call === 1 ? briefReply(BRIEF, usageOf(1_200, 400)) : briefReply(BRIEF, usageOf(700, 250))))
+
+  await startInteractive($)
+  await runTurn($, clock, 'クリア前の依頼', 'クリア前の回答', 't1')
+  await $.session.end({ reason: 'clear', sessionId: 'sess-1', resume: { id: 'sess-1' } })
+  session.id = 'sess-2'
+  await clock.advance(1_000)
+  await runTurn($, clock, 'クリア後の依頼', 'クリア後の回答', 't2')
+
+  expect([store.get('brief:sess-1'), store.get('brief:sess-2')]).toEqual([
+    { sections: BRIEF, turnKey: turnKey('クリア前の依頼', 'クリア前の回答'), savedAt: START, usage: { calls: 1, inputTokens: 1_200, outputTokens: 400 } },
+    { sections: BRIEF, turnKey: turnKey('クリア後の依頼', 'クリア後の回答'), savedAt: START + 1_000, usage: { calls: 1, inputTokens: 700, outputTokens: 250 } },
+  ])
+})
+
+test('/clear の前に始まった呼び出しが後から届いても、新しい会話の累計には数えない', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  const session = { id: 'sess-1' }
+  const store = standInForEngine(on, [], {}, [], session)
+  let calls = 0
+  on('model.complete', async () => {
+    calls += 1
+    if (calls === 1) {
+      await clock.sleep(5_000)
+
+      return briefReply(BRIEF, usageOf(900, 300))
+    }
+
+    return calls === 2 ? briefReply(BRIEF, usageOf(700, 250)) : briefReply(BRIEF, usageOf(600, 200))
+  })
+
+  await startInteractive($)
+  await runTurn($, clock, 'クリア前の依頼', 'クリア前の回答', 't1')
+  await $.session.end({ reason: 'clear', sessionId: 'sess-1', resume: { id: 'sess-1' } })
+  session.id = 'sess-2'
+  await clock.advance(1_000)
+  await runTurn($, clock, 'クリア後の依頼', 'クリア後の回答', 't2')
+  // The call begun before /clear lands now; the next brief of the new conversation is saved after it.
+  await clock.advance(5_000)
+  await runTurn($, clock, 'もう一つの依頼', 'もう一つの回答', 't3')
+
+  expect([store.get('brief:sess-1'), store.get('brief:sess-2')]).toEqual([
+    undefined,
+    { sections: BRIEF, turnKey: turnKey('もう一つの依頼', 'もう一つの回答'), savedAt: START + 6_000, usage: { calls: 2, inputTokens: 1_300, outputTokens: 450 } },
+  ])
+})
+
+test('前のターンの呼び出しが後から届いて概要を捨てても、その呼び出しは累計に数える', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  const store = standInForEngine(on)
+  let calls = 0
+  on('model.complete', async () => {
+    calls += 1
+    if (calls === 1) {
+      await clock.sleep(10_000)
+
+      return briefReply({ ...BRIEF, purpose: '古い概要' }, usageOf(1_000, 300))
+    }
+
+    return calls === 2 ? briefReply(BRIEF, usageOf(1_100, 320)) : briefReply(BRIEF, usageOf(1_200, 350))
+  })
+
+  await startInteractive($)
+  await runTurn($, clock, '一つ目', '一つ目の回答', 't1')
+  await runTurn($, clock, '二つ目', '二つ目の回答', 't2')
+  await clock.advance(10_000)
+  await runTurn($, clock, '三つ目', '三つ目の回答', 't3')
+
+  expect(store.get('brief:sess-1')).toEqual({
+    sections: BRIEF,
+    turnKey: turnKey('三つ目', '三つ目の回答'),
+    savedAt: START + 10_000,
+    usage: { calls: 3, inputTokens: 3_300, outputTokens: 970 },
+  })
 })
 
 test('開いたセッションの概要が保存済みで最後の依頼も同じなら、Haiku を呼ばずにそのまま出す', async ($, on) => {
@@ -1041,7 +1209,7 @@ test('/clear の後の新しい会話の概要も、新しいセッション ID 
   await clock.advance(1_000)
   await runTurn($, clock, 'クリア後の依頼', 'クリア後の回答', 't2')
 
-  expect(store.get('brief:sess-2')).toEqual({ sections: BRIEF, turnKey: turnKey('クリア後の依頼', 'クリア後の回答'), savedAt: START + 1_000 })
+  expect(store.get('brief:sess-2')).toEqual({ sections: BRIEF, turnKey: turnKey('クリア後の依頼', 'クリア後の回答'), savedAt: START + 1_000, usage: { calls: 1, inputTokens: 0, outputTokens: 0 } })
 })
 
 test('/clear の直後に依頼を始めても、その後に分かった新しいセッション ID でターンを消さない', async ($, on) => {
@@ -1059,7 +1227,7 @@ test('/clear の直後に依頼を始めても、その後に分かった新し�
   await completeTurn($, 'クリア直後の回答', 't2')
   await clock.settle()
 
-  expect(store.get('brief:sess-2')).toEqual({ sections: BRIEF, turnKey: turnKey('クリア直後の依頼', 'クリア直後の回答'), savedAt: START + 1_000 })
+  expect(store.get('brief:sess-2')).toEqual({ sections: BRIEF, turnKey: turnKey('クリア直後の依頼', 'クリア直後の回答'), savedAt: START + 1_000, usage: { calls: 1, inputTokens: 0, outputTokens: 0 } })
 })
 
 test('Pane の閉じるボタンは Pane を閉じる (ctrl+x b の 2 回目で閉じるための受け口)', async ($, on) => {

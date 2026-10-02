@@ -1,6 +1,6 @@
 import type { SessionMessage } from 'claude-code'
 
-import type { Brief, Question, Sections, StoredBrief, TurnEntry } from '../types'
+import type { Brief, Question, Sections, StoredBrief, TurnEntry, Usage } from '../types'
 
 /** The words the band, the pane and the command are drawn in. */
 export type Words = {
@@ -71,6 +71,8 @@ export const localeFor = (setting: unknown): Locale => {
   return { words: /^(ja\b|japanese|日本語)/i.test(language) ? JAPANESE : ENGLISH, language }
 }
 
+const NO_USAGE: Usage = { calls: 0, inputTokens: 0, outputTokens: 0 }
+
 export const EMPTY: Brief = {
   turns: [],
   questions: [],
@@ -80,6 +82,7 @@ export const EMPTY: Brief = {
   isWorking: false,
   sessionId: null,
   epoch: 0,
+  usage: NO_USAGE,
 }
 
 /** A new, empty conversation: the counts start over and the epoch moves on. */
@@ -406,13 +409,33 @@ export const turnKeyOf = (brief: Brief): string => {
   return turn === undefined ? '' : turnKey(turn.ask, turn.answer)
 }
 
+/** Counts one Haiku call, with the tokens the engine reports for it. */
+export const addUsage = (brief: Brief, used: { input_tokens: number; output_tokens: number }): Brief => ({
+  ...brief,
+  usage: {
+    calls: brief.usage.calls + 1,
+    inputTokens: brief.usage.inputTokens + used.input_tokens,
+    outputTokens: brief.usage.outputTokens + used.output_tokens,
+  },
+})
+
+const isCount = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0
+
+/** The saved count of calls, or zero for a brief saved before the mod counted them. */
+const usageOf = (value: unknown): Usage =>
+  isRecord(value) && isCount(value.calls) && isCount(value.inputTokens) && isCount(value.outputTokens)
+    ? { calls: value.calls, inputTokens: value.inputTokens, outputTokens: value.outputTokens }
+    : NO_USAGE
+
 /** A stored brief, or undefined for anything the store holds that is not one. */
 export const storedBriefOf = (value: unknown): StoredBrief | undefined => {
   if (!isRecord(value) || typeof value.turnKey !== 'string' || typeof value.savedAt !== 'number') return undefined
 
   const sections = isRecord(value.sections) ? parseSections(JSON.stringify(value.sections)) : undefined
 
-  return sections === undefined ? undefined : { sections, turnKey: value.turnKey, savedAt: value.savedAt }
+  return sections === undefined
+    ? undefined
+    : { sections, turnKey: value.turnKey, savedAt: value.savedAt, usage: usageOf(value.usage) }
 }
 
 /** Keeps the brief of the newest turn: a slow reply for an older one is dropped. */
