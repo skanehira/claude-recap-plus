@@ -1,8 +1,8 @@
 # claude-session-brief
 
-![d548973e](/images/README.ja/d548973e.png)
-
 [日本語](README.ja.md)
+
+![](./images/d548973e.png)
 
 A [Claude Code](https://claude.com/claude-code) mod that keeps a brief of the session right above the prompt. When you run several sessions side by side, switching to one tells you at a glance what it is for and where it stands, without scrolling back through the conversation.
 

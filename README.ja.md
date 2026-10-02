@@ -1,8 +1,8 @@
 # claude-session-brief
 
-![d548973e](/images/README.ja/d548973e.png)
-
 [English](README.md)
+
+![](./images/d548973e.png)
 
 [Claude Code](https://claude.com/claude-code) の mod です。prompt のすぐ上に、そのセッションの概要を出します。複数のセッションを並べて操作していても、切り替えた先のセッションが何のためのもので、今どこまで進んでいるかが、会話をさかのぼらずに分かります。
 
