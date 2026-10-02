@@ -12,6 +12,7 @@ export type Words = {
   brief: string
   pending: string
   details: string
+  paneTitle: string
   command: string
   turns: string
   questions: string
@@ -34,6 +35,7 @@ export const WORDS: Readonly<Record<Language, Words>> = {
     brief: 'Brief',
     pending: '(pending)',
     details: 'details',
+    paneTitle: 'Session brief',
     command: "Open this session's brief: the summary, every turn, every question and answer",
     turns: 'Turns',
     questions: 'Questions',
@@ -59,6 +61,7 @@ export const WORDS: Readonly<Record<Language, Words>> = {
     brief: '目的',
     pending: '(要約待ち)',
     details: '詳細',
+    paneTitle: 'セッション概要',
     command: 'このセッションの要約・ターン・質問と回答をパネルで開く',
     turns: 'ターン',
     questions: '質問と回答',
@@ -87,7 +90,11 @@ export const EMPTY: Brief = {
   questions: [],
   summary: null,
   isWorking: false,
+  epoch: 0,
 }
+
+/** A new, empty conversation: the counts start over and the epoch moves on. */
+export const startOver = (brief: Brief): Brief => ({ ...EMPTY, epoch: brief.epoch + 1 })
 
 // What a turn keeps of the request and the answer: enough for the summary's
 // prompt and the pane's rows, and a bound on what a long session holds.
@@ -100,21 +107,35 @@ const clip = (text: string, chars: number): string =>
 
 const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
 
-const COMMAND = /<command-name>(\/[^<]+)<\/command-name>(?:\s*<command-args>([\s\S]*?)<\/command-args>)?/
+// A command the model runs (a skill, a prompt command) opens with its message;
+// a local one (/clear, /compact) opens with its name and starts no turn.
+const PROMPT_COMMAND =
+  /^\s*<command-message>[^<]*<\/command-message>\s*<command-name>(\/[^<]+)<\/command-name>(?:\s*<command-args>([\s\S]*?)<\/command-args>)?/
+
+const PASTED = /<\/?pasted_content\b[^>]*>/g
+
+// Text the engine writes into a user turn that the person did not type.
+const INJECTED = [
+  'Another Claude session sent a message:',
+  '[Request interrupted by user',
+  'This session is being continued from a previous conversation',
+  'Base directory for this skill:',
+]
 
 /**
  * The request a turn's text carries, or undefined when it carries none. A
- * slash command arrives as its markup and reads as `/name args`; a
- * continuation starts with no text, and text the engine injects
- * (notifications, reminders) opens with a tag.
+ * prompt command arrives as its markup and reads as `/name args`; pasted text
+ * keeps its content without the tags; a continuation starts with no text; and
+ * what the engine injects opens with a tag or one of its fixed phrases.
  */
 const requestOf = (text: string): string | undefined => {
-  const command = COMMAND.exec(text)
+  const command = PROMPT_COMMAND.exec(text)
   if (command) return [command[1], command[2]?.trim()].filter(Boolean).join(' ')
 
-  const trimmed = text.trim()
+  const trimmed = text.replace(PASTED, '').trim()
+  const isInjected = trimmed.startsWith('<') || INJECTED.some(phrase => trimmed.startsWith(phrase))
 
-  return trimmed === '' || trimmed.startsWith('<') ? undefined : trimmed
+  return trimmed === '' || isInjected ? undefined : trimmed
 }
 
 const lastTurn = (brief: Brief): TurnEntry | undefined => brief.turns.at(-1)

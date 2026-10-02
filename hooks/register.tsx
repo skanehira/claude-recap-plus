@@ -12,6 +12,7 @@ import {
   purposeLine,
   rebuild,
   setSummary,
+  startOver,
   startTurn,
   statusLine,
   summaryFromReply,
@@ -22,7 +23,7 @@ import type { Words } from './brief'
 
 const brief = atom({ plugin: 'session-brief', key: 'brief' } as const, EMPTY)
 
-const PANE = { id: 'session-brief', title: 'Session brief', focus: true, closeOnEscape: true } as const
+const PANE_ID = 'session-brief'
 
 // How often the band's elapsed times are drawn again while nothing else moves.
 const REDRAW_MS = 15_000
@@ -40,6 +41,7 @@ const summarize = async ($: EngineInterface, words: Words) => {
   const request = summaryRequest(current, words)
   const turn = current.turns.at(-1)
   if (request === undefined || turn === undefined) return
+  const { epoch } = current
 
   const reply = await $.model.complete({
     model: 'haiku',
@@ -51,7 +53,10 @@ const summarize = async ($: EngineInterface, words: Words) => {
   const text =
     (reply.isAnswered ? summaryFromReply(reply.text) : undefined) ??
     fallbackSummary(turn.answer ?? '')
-  if (text !== undefined) await update($, brief, latest => setSummary(latest, text, turn.turn))
+  if (text === undefined) return
+
+  // A /clear or /resume while the model answered started another conversation.
+  await update($, brief, latest => (latest.epoch === epoch ? setSummary(latest, text, turn.turn) : latest))
 }
 
 /**
@@ -69,6 +74,7 @@ const summarizeLater = ($: EngineInterface, words: Words) => {
 
 export const register: Register = (on, options) => {
   const words = wordsFor(options.language)
+  const pane = { id: PANE_ID, title: words.paneTitle, focus: true, closeOnEscape: true } as const
 
   // Set by session.start, which fires again on every reload of this module.
   let isInteractive = false
@@ -90,7 +96,7 @@ export const register: Register = (on, options) => {
     if ((await read($, brief)).turns.length === 0) {
       const rebuilt = rebuild(await $.session.messages())
       if (rebuilt.turns.length > 0) {
-        await update($, brief, () => rebuilt)
+        await update($, brief, current => ({ ...rebuilt, epoch: current.epoch }))
         summarizeLater($, words)
       }
     }
@@ -102,7 +108,7 @@ export const register: Register = (on, options) => {
     // A /clear starts a new conversation and an in-process /resume moves to
     // another one; neither raises session.start again, so start over here.
     if (isInteractive && (e.reason === 'clear' || e.reason === 'resume')) {
-      await update($, brief, () => EMPTY)
+      await update($, brief, startOver)
     }
 
     return next(e)
@@ -128,7 +134,7 @@ export const register: Register = (on, options) => {
   })
 
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
-    if (!isInteractive || e.agentId !== undefined) return next(e)
+    if (!isInteractive) return next(e)
 
     await update($, brief, current =>
       askQuestions(
@@ -146,12 +152,12 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'brief' }, async $ => {
-    await $.ui.open(PANE)
+    await $.ui.open(pane)
 
     return {}
   })
 
-  on('ui.render', { component: 'Pane', requestId: PANE.id }, async ($, e) => {
+  on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e) => {
     const current = await read($, brief)
     const { Box, Text } = $.ui.resolve(e)
 
@@ -184,7 +190,7 @@ export const register: Register = (on, options) => {
           </Box>
           {/* The engine draws its collapse mark over the band's last cells. */}
           <Box flexShrink={0} marginRight={COLLAPSE_MARK_CELLS}>
-            <Button key="open" label={words.details} hotkey="b" plain dimColor onPress={() => $.ui.open(PANE)} />
+            <Button key="open" label={words.details} hotkey="b" plain dimColor onPress={() => $.ui.open(pane)} />
           </Box>
         </Box>
         <Text wrap="truncate-end" dimColor>

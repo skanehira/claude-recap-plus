@@ -505,12 +505,15 @@ test('/ コマンドで始めたターンは、コマンド名と引数を依頼
   const rows = (await ui.findAll({ type: 'Text' })).map(found => found.text)
   await ui.unmount()
 
-  expect(rows.slice(1, 6)).toEqual([
+  expect(rows).toEqual([
+    'Brief: (pending)',
     'Turns',
     'T1 ask: /dev-impl 3 件実装して',
     '   answer: (working)',
     'T2 ask: /brief',
     '   answer: (working)',
+    'Questions',
+    '(none yet)',
   ])
 })
 
@@ -742,5 +745,202 @@ test('自由入力の回答はその文を、答えずに閉じた質問は (no 
     '   → 別案を考えたい',
     'T1 [一覧要件] Q1: 一覧で見たいですか?',
     '   → (no answer)',
+  ])
+})
+
+test('/clear の前に始まった要約が後から届いても、空にした後の会話には書き込まない', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  standInForEngine(on)
+  on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+  let calls = 0
+  on('model.complete', async () => {
+    calls += 1
+    if (calls === 3) {
+      await clock.sleep(5_000)
+
+      return replyWith('クリア前の会話の要約')
+    }
+
+    return replyWith(`要約${calls}`)
+  })
+
+  await startInteractive($)
+  for (const turnId of ['t1', 't2', 't3']) {
+    await $.turn.start({ text: `クリア前の依頼 ${turnId}`, turnId })
+    await completeTurn($, `クリア前の回答 ${turnId}`, turnId)
+    await clock.settle()
+  }
+  await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } })
+  await $.turn.start({ text: 'クリア後の依頼', turnId: 'n1' })
+  await completeTurn($, 'クリア後の回答', 'n1')
+  await clock.settle()
+  await clock.advance(5_000)
+  const afterLateReply = (await bandRows($, 'terminal'))[1]
+  await $.turn.start({ text: 'クリア後の二つ目', turnId: 'n2' })
+  await completeTurn($, 'クリア後の二つ目の回答', 'n2')
+  await clock.settle()
+
+  expect([afterLateReply, (await bandRows($, 'terminal'))[1]]).toEqual(['Brief: 要約4', 'Brief: 要約5'])
+})
+
+test('貼り付けた依頼はターンに数え、他セッションからの通知・中断・compact の要約・ローカルコマンドは続きとして扱う', async ($, on) => {
+  mock.clock(on, { now: START })
+  standInForEngine(on)
+  recordPaneOpens(on)
+
+  await startInteractive($)
+  await $.turn.start({ text: '\n\n<pasted_content id="857c">\n## やりたいこと\n詳細\n</pasted_content id="857c">', turnId: 't1' })
+  for (const text of [
+    'Another Claude session sent a message:\n<agent-message from="worker">done</agent-message>',
+    '[Request interrupted by user for tool use]',
+    'This session is being continued from a previous conversation that ran out of context.',
+    '<command-name>/compact</command-name>\n            <command-message>compact</command-message>\n            <command-args></command-args>',
+  ]) {
+    await $.turn.start({ text, turnId: 'c' })
+  }
+
+  const ui = await $.ui.mount(paneOn('terminal'))
+  const rows = (await ui.findAll({ type: 'Text' })).map(found => found.text)
+  await ui.unmount()
+
+  expect(rows).toEqual([
+    'Brief: (pending)',
+    'Turns',
+    'T1 ask: ## やりたいこと',
+    '   answer: (working)',
+    'Questions',
+    '(none yet)',
+  ])
+})
+
+test('language が ja なら /brief で開く Pane のタイトルも日本語にする', { options: { language: 'ja' } }, async ($, on) => {
+  mock.clock(on, { now: START })
+  standInForEngine(on)
+  const opened = recordPaneOpens(on)
+
+  await startInteractive($)
+  await $.command.run({
+    command: 'brief',
+    args: '',
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: false, columns: 90 },
+  })
+
+  expect(opened).toEqual([{ ...OPENED_PANE, title: 'セッション概要' }])
+})
+
+test('resume の再構築は、最初の依頼より前の行・ツール結果の行・本文の無い行を数えず、自由入力の回答を残す', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  standInForEngine(on, [
+    {
+      role: 'assistant',
+      text: '最初の依頼より前の行',
+      toolUses: [
+        {
+          tool_use_id: 'toolu_0',
+          tool: 'AskUserQuestion',
+          input: { questions: [{ ...QUESTIONS[0]!, header: '前置き' }] },
+          result: { answers: {} },
+        },
+      ],
+    },
+    { role: 'user', text: '最初の依頼', toolUses: [] },
+    {
+      role: 'assistant',
+      text: '質問します',
+      toolUses: [
+        {
+          tool_use_id: 'toolu_1',
+          tool: 'AskUserQuestion',
+          input: { questions: QUESTIONS },
+          result: { questions: QUESTIONS, answers: {}, response: '自由に答えた' },
+        },
+      ],
+    },
+    {
+      role: 'user',
+      text: 'ツールの出力の本文',
+      toolUses: [],
+      toolResults: [{ tool_use_id: 'toolu_1', text: 'answered', isError: false, result: {} }],
+    },
+    { role: 'assistant', text: '方針を決めました', toolUses: [] },
+    { role: 'assistant', text: '', toolUses: [] },
+  ])
+  recordPaneOpens(on)
+  on('model.complete', () => replyWith('要約'))
+
+  await startInteractive($)
+  await clock.settle()
+  const ui = await $.ui.mount(paneOn('terminal'))
+  const rows = (await ui.findAll({ type: 'Text' })).map(found => found.text)
+  await ui.unmount()
+
+  expect(rows).toEqual([
+    'Brief: 要約',
+    'Turns',
+    'T1 ask: 最初の依頼',
+    '   answer: 方針を決めました',
+    'Questions',
+    'T1 [一覧要件] Q1: 一覧で見たいですか?',
+    '   → 自由に答えた',
+  ])
+})
+
+test('2 ターン目の依頼には前回の要約を入れ、そのターンに質問が無ければ (none) と書く', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  standInForEngine(on)
+  on('tool.call', { tool: 'AskUserQuestion' }, () => ANSWERED)
+  const prompts: string[] = []
+  on('model.complete', (_$, e) => {
+    prompts.push(e.prompt)
+
+    return replyWith(`要約${prompts.length}`)
+  })
+
+  await startInteractive($)
+  await $.turn.start({ text: '一つ目', turnId: 't1' })
+  await $.tool.call({ tool: 'AskUserQuestion', questions: QUESTIONS })
+  await completeTurn($, '一つ目の回答', 't1')
+  await clock.settle()
+  await $.turn.start({ text: '二つ目', turnId: 't2' })
+  await completeTurn($, '二つ目の回答', 't2')
+  await clock.settle()
+
+  expect(prompts[1]).toBe(
+    [
+      '<previous_summary>要約1</previous_summary>',
+      '<latest_request>二つ目</latest_request>',
+      '<latest_answer>二つ目の回答</latest_answer>',
+      '<questions_and_answers>',
+      '(none)',
+      '</questions_and_answers>',
+    ].join('\n'),
+  )
+})
+
+test('依頼文なしで始まった最初のターンは、依頼を (continued) として Haiku に渡す', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  standInForEngine(on)
+  const prompts: string[] = []
+  on('model.complete', (_$, e) => {
+    prompts.push(e.prompt)
+
+    return replyWith('要約')
+  })
+
+  await startInteractive($)
+  await $.turn.start({ text: '', turnId: 't1' })
+  await completeTurn($, '続きの回答', 't1')
+  await clock.settle()
+
+  expect(prompts).toEqual([
+    [
+      '<previous_summary>(none)</previous_summary>',
+      '<latest_request>(continued)</latest_request>',
+      '<latest_answer>続きの回答</latest_answer>',
+      '<questions_and_answers>',
+      '(none)',
+      '</questions_and_answers>',
+    ].join('\n'),
   ])
 })

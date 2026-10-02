@@ -22,6 +22,8 @@ export type Brief = {
   questions: QuestionAnswer[]
   summary: Summary | null
   isWorking: boolean
+  /** Counts the conversations this process has held; a /clear or /resume moves it on. */
+  epoch: number
 }
 
 declare module 'claude-code' {
