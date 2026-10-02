@@ -39,13 +39,15 @@ After each turn of the main conversation, the mod makes one Haiku call through y
 | Your request in that turn | first 800 characters |
 | Claude's final answer in that turn | first 1500 characters |
 | The questions asked and answered in that turn | all |
+| Before there is a summary to carry on (the first turn, or a session read back from history): your earlier requests | the last 20, 120 characters each |
+| Before there is a summary to carry on, in a session that was compacted: the summary the compaction kept | first 2000 characters |
 
 Subagent turns and non-interactive runs (`claude -p`) never call it. When Haiku gives no usable reply, for example on a backend without Haiku, the first line of the final answer that is not a heading stands in as the summary.
 
 ## Behaviour to know
 
 - **Dialogs hide the band.** In the terminal, the AskUserQuestion dialog and the permission dialog take over the prompt area, and Claude Code does not draw the band while they are up. The dialog itself shows what the session is waiting for.
-- **Resume rebuilds it.** A session resumed in a new process (`claude --resume`, `claude --continue`) rebuilds its turns and questions from the transcript and writes one fresh summary. The times of those turns were not kept, so they show without "ago".
+- **Sessions from before the mod get a brief too.** When the mod loads into a session that already has a conversation, for example one you resume with `claude --resume` or `claude --continue` after installing the mod, it reads the conversation back. It rebuilds the turns and the questions, and writes one summary from that history: your earlier requests and, if the session was compacted, the summary the compaction kept. The times of those turns were not kept, so they show without "ago". Turns from before a compaction are gone from the conversation, so the turn count starts after the last compaction.
 - **`/clear` starts over.** So does `/resume` into another session within the same process.
 - **Claude Code only.** Codex, OpenCode and other agents have no mod API, so their sessions show nothing.
 
