@@ -1,19 +1,30 @@
 # claude-session-brief
 
-A [Claude Code](https://claude.com/claude-code) mod that keeps a two-line brief of the session right above the prompt. When you run several sessions side by side, switching to one tells you at a glance what it is working on, where it stands, and what you last decided.
+A [Claude Code](https://claude.com/claude-code) mod that keeps a brief of the session right above the prompt. When you run several sessions side by side, switching to one tells you at a glance what it is for and where it stands, without scrolling back through the conversation.
 
 ```text
-T4 ✓ answered 2m ago · Scope=B: switching is enough                      b: details
-Brief: Session panel design approved; implementing the mod and its tests
+Purpose: Add retry with backoff to the payment webhook handler                  b: details
+Status: The tests pass locally. Claude is waiting for your OK to open the pull
+request.
 ```
 
 ## What it shows
 
-- **Row 1** is the turn number and the state. While a turn runs it reads `▶ working 2m`. After the turn it reads `✓ answered 3m ago`, followed by the last question Claude asked you in that turn and the answer you chose.
-- **Row 2** is a one-line summary of what the session is working on and what stage it is at. Haiku writes it after every turn of the main conversation, so it follows the work as it drifts away from the first prompt.
-- **`/brief`** opens a pane with every turn (your request and the answer, one line each) and every question Claude asked with your answer. The band's `details` button opens the same pane: press ctrl+x tab to focus the band, then `b`.
+Haiku rewrites the brief after every turn of the main conversation. It works from the previous brief, your request, Claude's answer, the questions Claude asked with your answers, and what the turn did with its tools. Every line is shown in full and wraps; nothing is cut off with an ellipsis.
 
-Nothing is drawn before the first turn, and the band gives way while Claude Code shows a survey.
+- **The band above the prompt** shows the purpose and the status. While a turn runs, the status keeps the last brief and is marked `(working)`.
+- **`/brief`** opens a pane with all six parts of the brief. The band's `details` button opens the same pane: press ctrl+x tab to focus the band, then `b`. While the pane is shown, the band steps aside, since the pane says the same and more.
+
+| Part | What it says |
+| --- | --- |
+| Purpose | What the session is for, naming the concrete target (a pull request, a file, a feature) |
+| Status | Where the work stands now |
+| Done | What has been done so far, up to 5 items |
+| Decisions | What has been decided, including your answers to Claude's questions, up to 5 items |
+| Waiting on you | What Claude is waiting for you to answer or do |
+| Next | What Claude will do next |
+
+Nothing is drawn before the first turn. Until the first brief is written, the band says `(after the first turn)`.
 
 ## Install
 
@@ -27,7 +38,7 @@ Tested with Claude Code 2.1.287. Mods are early access, and their API can change
 
 ## Language
 
-The band, the pane and the summary are in English by default. To switch to Japanese, open `/config`, find the `Language · session-brief` row, and pick `ja`.
+The brief follows Claude Code's own `language` setting. With `"language": "Japanese"`, the headings are Japanese and Haiku writes the brief in Japanese. With another language, the headings stay English and Haiku writes in that language. With no setting, everything is English.
 
 ## Cost and what is sent
 
@@ -35,19 +46,20 @@ After each turn of the main conversation, the mod makes one Haiku call through y
 
 | Part | Limit |
 | --- | --- |
-| The previous summary | 120 characters |
+| The previous brief | its six parts |
 | Your request in that turn | first 800 characters |
-| Claude's final answer in that turn | first 1500 characters |
+| Claude's final answer in that turn | first 3000 characters |
 | The questions asked and answered in that turn | all |
-| Before there is a summary to carry on (the first turn, or a session read back from history): your earlier requests | the last 20, 120 characters each |
-| Before there is a summary to carry on, in a session that was compacted: the summary the compaction kept | first 2000 characters |
+| What the turn did: shell commands by their description, edited and written files, subagents, skills, web fetches and searches, MCP tools | up to 30 lines |
+| Before there is a brief to carry on: your earlier requests | the last 20, 120 characters each |
+| Before there is a brief to carry on, in a session that was compacted: the summary the compaction kept | first 2000 characters |
 
-Subagent turns and non-interactive runs (`claude -p`) never call it. When Haiku gives no usable reply, for example on a backend without Haiku, the first line of the final answer that is not a heading stands in as the summary.
+Reading and searching files is not sent. Subagent turns and the tools subagents call are not sent, and they never trigger a call. Non-interactive runs (`claude -p`) never call it. When Haiku gives no usable reply, for example on a backend without Haiku, the first line of the final answer that is not a heading becomes the status.
 
 ## Behaviour to know
 
 - **Dialogs hide the band.** In the terminal, the AskUserQuestion dialog and the permission dialog take over the prompt area, and Claude Code does not draw the band while they are up. The dialog itself shows what the session is waiting for.
-- **Sessions from before the mod get a brief too.** When the mod loads into a session that already has a conversation, for example one you resume with `claude --resume` or `claude --continue` after installing the mod, it reads the conversation back. It rebuilds the turns and the questions, and writes one summary from that history: your earlier requests and, if the session was compacted, the summary the compaction kept. The times of those turns were not kept, so they show without "ago". Turns from before a compaction are gone from the conversation, so the turn count starts after the last compaction.
+- **Sessions from before the mod get a brief too.** When the mod loads into a session that already has a conversation, for example one you resume with `claude --resume` or `claude --continue` after installing the mod, it reads the conversation back and writes the first brief from that history: your earlier requests and, if the session was compacted, the summary the compaction kept. Turns from before a compaction are gone from the conversation, so only that summary speaks for them.
 - **`/clear` starts over.** So does `/resume` into another session within the same process.
 - **Claude Code only.** Codex, OpenCode and other agents have no mod API, so their sessions show nothing.
 
@@ -63,9 +75,9 @@ tsc -p .                                            # type-check; needs .claude-
 
 ## 日本語
 
-prompt の上に、このセッションの状況を 2 行で出す Claude Code の mod です。1 行目はターン番号と状態 (作業中と経過時間、または応答済みと経過時間、そのターンの最後の質問と回答) です。2 行目は、main のターンが終わるたびに Haiku が書く 1 行の要約です。`/brief` か帯の `details` ボタン (ctrl+x tab で帯にフォーカスして `b`) で、全ターンの依頼と回答、全ての質問と回答を Pane に出します。
+prompt の上に、このセッションの概要を出す Claude Code の mod です。main のターンが終わるたびに、Haiku が概要を書き直します。帯には目的と現状を、省略せずに折り返して出します。`/brief` か帯の「詳細」ボタン (ctrl+x tab で帯にフォーカスして `b`) では、6 項目すべてを Pane に出します。6 項目は、目的、現状、やったこと、決定事項、確認待ち、次にやることです。
 
-日本語で表示するには、`/config` の `Language · session-brief` の行で `ja` を選びます。
+表示の言語は、Claude Code の `language` 設定に従います。`"language": "Japanese"` なら、見出しも概要も日本語になります。
 
 ## License
 
