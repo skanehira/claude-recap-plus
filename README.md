@@ -13,7 +13,7 @@ request.
 Haiku rewrites the brief after every turn of the main conversation. It works from the previous brief, your request, Claude's answer, the questions Claude asked with your answers, and what the turn did with its tools. Every line is shown in full and wraps; nothing is cut off with an ellipsis.
 
 - **The band above the prompt** shows the purpose and the status. While a turn runs, the status keeps the last brief and is marked `(working)`.
-- **`/brief`** opens a pane with all six parts of the brief. The band's `details` button opens the same pane: press ctrl+x tab to focus the band, then `b`. While the pane is shown, the band steps aside, since the pane says the same and more.
+- **`/brief`** opens a pane with all six parts of the brief. So does ctrl+x b once you add the key bindings below, and so does the band's `details` button. While the pane is shown, the band steps aside, since the pane says the same and more.
 
 | Part | What it says |
 | --- | --- |
@@ -27,6 +27,33 @@ Haiku rewrites the brief after every turn of the main conversation. It works fro
 Nothing is drawn before the first turn. Until the first brief is written, the band says `(after the first turn)`.
 
 The brief is saved per session. Opening a session that was already analyzed shows its brief at once. Opening one that was not, or one that moved on since, analyzes it right then.
+
+## Keys
+
+With these bindings in `~/.claude/keybindings.json`, ctrl+x is the prefix for the brief:
+
+| Keys | What they do |
+| --- | --- |
+| ctrl+x b | Open the pane with the whole brief |
+| ctrl+x i | Fold the band away; press again to bring it back |
+
+```json
+{
+  "bindings": [
+    {
+      "context": "Chat",
+      "bindings": {
+        "ctrl+x b": "app:cycleDiffBase",
+        "ctrl+x i": "abovePrompt:toggle"
+      }
+    }
+  ]
+}
+```
+
+A mod cannot define a key action of its own, so ctrl+x b borrows one. `app:cycleDiffBase` is the diff panel's action for cycling its comparison base, and Claude Code handles it only while the diff panel is open. Inside the diff panel, ctrl+x b still cycles the base. Elsewhere, the band's `details` button answers it and opens the pane. `abovePrompt:toggle` is Claude Code's own action for folding the band, bound to ctrl+x ctrl+a by default; ctrl+x i only adds a second key for it.
+
+Without the bindings, open the pane with `/brief`, or press ctrl+x tab to focus the band and then `b`. Fold the band with ctrl+x ctrl+a.
 
 ## Install
 
@@ -78,7 +105,7 @@ tsc -p .                                            # type-check; needs .claude-
 
 ## 日本語
 
-prompt の上に、このセッションの概要を出す Claude Code の mod です。main のターンが終わるたびに、Haiku が概要を書き直します。帯には目的と現状を、省略せずに折り返して出します。`/brief` か帯の「詳細」ボタン (ctrl+x tab で帯にフォーカスして `b`) では、6 項目すべてを Pane に出します。6 項目は、目的、現状、やったこと、決定事項、確認待ち、次にやることです。
+prompt の上に、このセッションの概要を出す Claude Code の mod です。main のターンが終わるたびに、Haiku が概要を書き直します。帯には目的と現状を、省略せずに折り返して出します。`/brief` か ctrl+x b では、6 項目すべてを Pane に出します。ctrl+x i で帯をたたみ、もう一度押すと戻ります。ctrl+x b と ctrl+x i を使うには、上の「Keys」の設定を `~/.claude/keybindings.json` に足します。6 項目は、目的、現状、やったこと、決定事項、確認待ち、次にやることです。
 
 概要はセッションごとに保存します。解析済みのセッションを開くと、保存した概要をすぐに出します。まだ解析していないセッションや、保存した後に会話が進んだセッションは、開いた時点で解析します。
 
