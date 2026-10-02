@@ -1,5 +1,7 @@
 # claude-session-brief
 
+[日本語](README.ja.md)
+
 A [Claude Code](https://claude.com/claude-code) mod that keeps a brief of the session right above the prompt. When you run several sessions side by side, switching to one tells you at a glance what it is for and where it stands, without scrolling back through the conversation.
 
 ```text
@@ -132,14 +134,6 @@ claude plugin test .                                # run hooks/*.test.ts(x) aga
 claude --plugin-dir .                               # try it in a session
 tsc -p .                                            # type-check; needs .claude-plugin/types/, which the engine writes when it loads the mod
 ```
-
-## 日本語
-
-prompt の上に、このセッションの概要を出す Claude Code の mod です。main のターンが終わるたびに、Haiku が概要を書き直します。帯には目的と現状を、省略せずに折り返して出します。`/brief` か ctrl+x b では、6 項目すべてを Pane に出します。ctrl+x b はもう一度押すと Pane を閉じます。ctrl+x i で帯をたたみ、もう一度押すと戻ります。ctrl+x b と ctrl+x i を使うには、上の「Keys」の設定を `~/.claude/keybindings.json` に足します。6 項目は、目的、現状、やったこと、決定事項、確認待ち、次にやることです。
-
-概要はセッションごとに保存します。解析済みのセッションを開くと、保存した概要をすぐに出します。まだ解析していないセッションや、保存した後に会話が進んだセッションは、開いた時点で解析します。
-
-表示の言語は、Claude Code の `language` 設定に従います。`"language": "Japanese"` なら、見出しも概要も日本語になります。
 
 ## License
 
