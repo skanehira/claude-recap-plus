@@ -12,7 +12,7 @@ request.
 
 ## What it shows
 
-Haiku rewrites the brief after every turn of the main conversation. It works from the previous brief, your request, Claude's answer, the questions Claude asked with your answers, and what the turn did with its tools. Every line is shown in full and wraps; nothing is cut off with an ellipsis.
+Haiku rewrites the brief after every turn of the main conversation. It works from the previous brief, your request, Claude's answer, the questions Claude asked with your answers, and what the turn did with its tools. No line is cut off at the edge of the screen; each one wraps and shows in full.
 
 - **The band above the prompt** shows the purpose and the status. While a turn runs, the status keeps the last brief and is marked `(working)`.
 - **`/brief`** opens a pane with all six parts of the brief. So does ctrl+x b once you add the key bindings below, and so does the band's `details` button. While the pane is shown, the band steps aside, since the pane says the same and more.
@@ -53,7 +53,7 @@ With these bindings in `~/.claude/keybindings.json`, ctrl+x is the prefix for th
 }
 ```
 
-A mod cannot define a key action of its own, so ctrl+x b borrows one. `app:cycleDiffBase` is the diff panel's action for cycling its comparison base, and Claude Code handles it only while the diff panel is open. Inside the diff panel, ctrl+x b still cycles the base. Elsewhere, the band's `details` button answers it and opens the pane. `abovePrompt:toggle` is Claude Code's own action for folding the band, bound to ctrl+x ctrl+a by default; ctrl+x i only adds a second key for it.
+A mod cannot define a key action of its own, so ctrl+x b borrows one. `app:cycleDiffBase` is the diff panel's action for cycling its comparison base, and Claude Code handles it only while the diff panel is open. So while the diff panel is open, ctrl+x b still cycles the base. While it is closed, the action presses the band's `details` button, which opens the pane. While the pane is shown, the action presses the pane's `close` button instead, which closes it. `abovePrompt:toggle` is Claude Code's own action for folding the band, bound to ctrl+x ctrl+a by default; ctrl+x i only adds a second key for it.
 
 The pane also closes with its `close` button (press `b` while the pane has the keyboard) or with Esc. Without the bindings, open the pane with `/brief`, or press ctrl+x tab to focus the band and then `b`. Fold the band with ctrl+x ctrl+a.
 
@@ -75,15 +75,15 @@ The brief follows Claude Code's own `language` setting. With `"language": "Japan
 
 After each turn of the main conversation, the mod makes one Haiku call through your own Claude Code session, on the same account and provider. Opening a session makes one more call only when its saved brief is missing or out of date. The call carries only these parts of the session:
 
-| Part                                                                                                                                     | Limit                            |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| The previous brief                                                                                                                       | its six parts                    |
-| Your request in that turn                                                                                                                | first 800 characters             |
-| Claude's final answer in that turn                                                                                                       | first 3000 characters            |
-| The questions asked and answered in that turn                                                                                            | all                              |
-| What the turn did: shell commands by their description, edited and written files, subagents, skills, web fetches and searches, MCP tools | up to 30 lines                   |
-| Before there is a brief to carry on: your earlier requests                                                                               | the last 20, 120 characters each |
-| Before there is a brief to carry on, in a session that was compacted: the summary the compaction kept                                    | first 2000 characters            |
+| Part                                                                                                                                                                                   | Limit                            |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| The previous brief                                                                                                                                                                     | its six parts                    |
+| Your request in that turn                                                                                                                                                              | first 800 characters             |
+| Claude's final answer in that turn                                                                                                                                                     | first 3000 characters            |
+| The questions asked and answered in that turn                                                                                                                                          | all                              |
+| What the turn did: shell commands by their description (the command's first line when there is none), edited and written files, subagents, skills, web fetches and searches, MCP tools | up to 30 lines                   |
+| Before there is a brief to carry on: your earlier requests                                                                                                                             | the last 20, 120 characters each |
+| Before there is a brief to carry on, in a session that was compacted: the summary the compaction kept                                                                                  | first 2000 characters            |
 
 Reading and searching files is not sent. Subagent turns and the tools subagents call are not sent, and they never trigger a call. Non-interactive runs (`claude -p`) never call it. When Haiku gives no usable reply, for example on a backend without Haiku, the first line of the final answer that is not a heading becomes the status.
 
@@ -115,14 +115,22 @@ rg 'session-brief:' ~/.claude/debug/latest
 **The brief is wrong.** Each brief is rewritten from the previous one, so a mistake can stay. To have it written again from the conversation:
 
 1. Quit every Claude Code process that has the session open. While one runs, it still holds the brief and saves it again.
-2. Remove the session's entry from the store. The store is a file named `session-brief_<…>.json` in `~/.claude/plugins/store/`, one per way the mod was loaded. The session id is the name of the session's transcript file under `~/.claude/projects/`.
+2. Remove the session's entry from the store. The store is a JSON file in `~/.claude/plugins/store/` whose name starts with `session-brief_`, one per way the mod was loaded. First list every entry by its key and purpose, and find the session's key by its purpose:
 
    ```bash
-   f=~/.claude/plugins/store/session-brief_<…>.json
-   jq 'del(."brief:<session id>")' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+   jq -r 'to_entries[] | "\(.key)\t\(.value.sections.purpose // "")"' ~/.claude/plugins/store/session-brief_*.json
    ```
 
-   To start over for every session, delete the file instead.
+   A key is `brief:` followed by the session id. The session id is the name of the session's transcript file under `~/.claude/projects/`, without `.jsonl`. Paste the key you found into the `key=` line, and remove that entry from every store file:
+
+   ```bash
+   key='<the key you found>'
+   for f in ~/.claude/plugins/store/session-brief_*.json; do
+     jq --arg key "$key" 'del(.[$key])' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+   done
+   ```
+
+   To start over for every session, delete the store files instead.
 3. Open the session again with `claude --resume`. The mod reads the conversation back and writes a new brief.
 
 ## Development
