@@ -386,20 +386,33 @@ export const fallbackSections = (brief: Brief, turn: TurnEntry | undefined, word
   }
 }
 
-/** The last turn as the store remembers it: `T<n> <request>`, '' with no turn. */
-export const lastAskOf = (brief: Brief): string => {
+/**
+ * A short fingerprint of a turn's request and answer (FNV-1a over both): what
+ * the store keeps to tell whether a saved brief is still up to date.
+ */
+export const turnKey = (ask: string | null, answer: string | null): string => {
+  let hash = 0x811c9dc5
+  for (const char of `${ask ?? ''}\u0000${answer ?? ''}`) {
+    hash = Math.imul(hash ^ (char.codePointAt(0) ?? 0), 0x01000193) >>> 0
+  }
+
+  return `v1:${hash.toString(16).padStart(8, '0')}`
+}
+
+/** The last turn's fingerprint, '' with no turn. */
+export const turnKeyOf = (brief: Brief): string => {
   const turn = lastTurn(brief)
 
-  return turn === undefined ? '' : `T${turn.turn} ${turn.ask ?? ''}`
+  return turn === undefined ? '' : turnKey(turn.ask, turn.answer)
 }
 
 /** A stored brief, or undefined for anything the store holds that is not one. */
 export const storedBriefOf = (value: unknown): StoredBrief | undefined => {
-  if (!isRecord(value) || typeof value.lastAsk !== 'string' || typeof value.savedAt !== 'number') return undefined
+  if (!isRecord(value) || typeof value.turnKey !== 'string' || typeof value.savedAt !== 'number') return undefined
 
   const sections = isRecord(value.sections) ? parseSections(JSON.stringify(value.sections)) : undefined
 
-  return sections === undefined ? undefined : { sections, lastAsk: value.lastAsk, savedAt: value.savedAt }
+  return sections === undefined ? undefined : { sections, turnKey: value.turnKey, savedAt: value.savedAt }
 }
 
 /** Keeps the brief of the newest turn: a slow reply for an older one is dropped. */

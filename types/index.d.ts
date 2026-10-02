@@ -43,8 +43,12 @@ export type Brief = {
 /** What the store keeps of a session's brief, under `brief:<session id>`. */
 export type StoredBrief = {
   sections: Sections
-  /** The last turn the brief was written after, as `T<n> <request>`; a different one means the session moved on. */
-  lastAsk: string
+  /**
+   * A fingerprint of the last turn's request and answer the brief was written
+   * after; a different one means the session moved on. It leaves out the turn
+   * number, which a compaction starts over.
+   */
+  turnKey: string
   savedAt: number
 }
 

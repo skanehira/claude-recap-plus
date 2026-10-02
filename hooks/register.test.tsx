@@ -2,6 +2,8 @@ import type { On, SessionMessage } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
+import { turnKey } from './brief'
+
 const PLUGIN = 'session-brief'
 const SURFACES = ['terminal', 'desktop'] as const
 const START = 1_790_000_000_000
@@ -83,6 +85,7 @@ const standInForEngine = (
   panes: { id: string; title: string; isShown: boolean; isFocused: boolean; isPlaced: boolean }[] = [],
   session: { id: string } = { id: 'sess-1' },
   storeEntries: Readonly<Record<string, unknown>> = {},
+  isCommandRefused = false,
 ) => {
   // The plugin's own store, kept in memory so a test can read what was saved.
   const store = new Map<string, unknown>(Object.entries(storeEntries))
@@ -103,7 +106,9 @@ const standInForEngine = (
   on('ui.panes', () => ({ value: [...panes] }))
   on('session.messages', () => ({ value: [...transcript] }))
   on('settings.read', () => ({ value: settings }))
-  on('command.register', (_$, e) => ({ value: { command: e.name } }))
+  on('command.register', (_$, e) =>
+    isCommandRefused ? { deny: `${e.name} is a built-in command` } : { value: { command: e.name } },
+  )
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
@@ -772,12 +777,12 @@ test('概要を作ったら、最後の依頼と一緒にセッション ID ご�
   await startInteractive($)
   await runTurn($, clock, 'パネルを作りたい', '作りました', 't1')
 
-  expect(store.get('brief:sess-1')).toEqual({ sections: BRIEF, lastAsk: 'T1 パネルを作りたい', savedAt: START })
+  expect(store.get('brief:sess-1')).toEqual({ sections: BRIEF, turnKey: turnKey('パネルを作りたい', '作りました'), savedAt: START })
 })
 
 test('開いたセッションの概要が保存済みで最後の依頼も同じなら、Haiku を呼ばずにそのまま出す', async ($, on) => {
   const clock = mock.clock(on, { now: START })
-  standInForEngine(on, RESUMED, {}, [], undefined, { 'brief:sess-1': { sections: BRIEF, lastAsk: 'T2 次の依頼', savedAt: START - 1000 } })
+  standInForEngine(on, RESUMED, {}, [], undefined, { 'brief:sess-1': { sections: BRIEF, turnKey: turnKey('次の依頼', '実装しました'), savedAt: START - 1000 } })
   const requests = recordModelCalls(on)
 
   await startInteractive($)
@@ -789,7 +794,7 @@ test('開いたセッションの概要が保存済みで最後の依頼も同�
 
 test('保存済みの概要の後に会話が進んでいたら、開いた時点で解析し直す', async ($, on) => {
   const clock = mock.clock(on, { now: START })
-  standInForEngine(on, RESUMED, {}, [], undefined, { 'brief:sess-1': { sections: { ...BRIEF, purpose: '古い概要' }, lastAsk: 'T1 最初の依頼', savedAt: START - 1000 } })
+  standInForEngine(on, RESUMED, {}, [], undefined, { 'brief:sess-1': { sections: { ...BRIEF, purpose: '古い概要' }, turnKey: turnKey('最初の依頼', '方針を決めました'), savedAt: START - 1000 } })
   const requests = recordModelCalls(on)
 
   await startInteractive($)
@@ -848,7 +853,7 @@ test('保存する概要は新しい順に 200 セッション分までにする
     [],
     undefined,
     Object.fromEntries(
-      Array.from({ length: 205 }, (_, index) => [`brief:old-${index}`, { sections: BRIEF, lastAsk: 'T1 x', savedAt: index }]),
+      Array.from({ length: 205 }, (_, index) => [`brief:old-${index}`, { sections: BRIEF, turnKey: 'v1:x', savedAt: index }]),
     ),
   )
 
@@ -872,7 +877,7 @@ test('/clear の後の新しい会話の概要も、新しいセッション ID 
   await clock.advance(1_000)
   await runTurn($, clock, 'クリア後の依頼', 'クリア後の回答', 't2')
 
-  expect(store.get('brief:sess-2')).toEqual({ sections: BRIEF, lastAsk: 'T1 クリア後の依頼', savedAt: START + 1_000 })
+  expect(store.get('brief:sess-2')).toEqual({ sections: BRIEF, turnKey: turnKey('クリア後の依頼', 'クリア後の回答'), savedAt: START + 1_000 })
 })
 
 test('/clear の直後に依頼を始めても、その後に分かった新しいセッション ID でターンを消さない', async ($, on) => {
@@ -890,7 +895,7 @@ test('/clear の直後に依頼を始めても、その後に分かった新し�
   await completeTurn($, 'クリア直後の回答', 't2')
   await clock.settle()
 
-  expect(store.get('brief:sess-2')).toEqual({ sections: BRIEF, lastAsk: 'T1 クリア直後の依頼', savedAt: START + 1_000 })
+  expect(store.get('brief:sess-2')).toEqual({ sections: BRIEF, turnKey: turnKey('クリア直後の依頼', 'クリア直後の回答'), savedAt: START + 1_000 })
 })
 
 test('Pane の閉じるボタンは Pane を閉じる (ctrl+x b の 2 回目で閉じるための受け口)', async ($, on) => {
@@ -914,4 +919,43 @@ test('Pane の閉じるボタンは Pane を閉じる (ctrl+x b の 2 回目で�
 
   const byThePlugin = { id: PANE_ID, origin: { kind: 'plugin' } }
   expect(closed).toEqual([byThePlugin, byThePlugin])
+})
+
+test('/brief の登録が拒否されても (同名の組み込みコマンドがある環境)、開いたセッションを解析する', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  standInForEngine(on, RESUMED, {}, [], undefined, {}, true)
+  const requests = recordModelCalls(on)
+
+  await startInteractive($)
+  await clock.settle()
+
+  expect(requests).toHaveLength(1)
+  expect(await bandRows($)).toEqual([`Purpose: ${BRIEF.purpose}`, `Status: ${BRIEF.status}`])
+})
+
+test('compact でターン番号が振り直されても、最後の依頼と回答が同じなら保存済みの概要を使う', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  const transcript: SessionMessage[] = []
+  const session = { id: 'sess-1' }
+  standInForEngine(on, transcript, {}, [], session)
+  const requests = recordModelCalls(on)
+
+  await startInteractive($)
+  for (const [ask, turnId] of [['一つ目', 't1'], ['二つ目', 't2'], ['三つ目', 't3']] as const) {
+    await runTurn($, clock, ask, `${ask}の回答`, turnId)
+  }
+  await $.session.end({ reason: 'resume', sessionId: 'sess-1', resume: { id: 'sess-1' } })
+  session.id = 'sess-2'
+  await clock.advance(1_000)
+  await $.session.end({ reason: 'resume', sessionId: 'sess-2', resume: { id: 'sess-2' } })
+  session.id = 'sess-1'
+  transcript.push(
+    { role: 'user', text: 'This session is being continued from a previous conversation that ran out of context.', toolUses: [] },
+    { role: 'user', text: '三つ目', toolUses: [] },
+    { role: 'assistant', text: '三つ目の回答', toolUses: [] },
+  )
+  await clock.advance(1_000)
+
+  expect(requests).toHaveLength(3)
+  expect(await bandRows($)).toEqual([`Purpose: ${BRIEF.purpose}`, `Status: ${BRIEF.status}`])
 })

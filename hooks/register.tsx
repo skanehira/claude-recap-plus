@@ -11,7 +11,6 @@ import {
   completeTurn,
   fallbackSections,
   freeTextOf,
-  lastAskOf,
   localeFor,
   paneSections,
   parseSections,
@@ -22,6 +21,7 @@ import {
   startTurn,
   storedBriefOf,
   summaryRequest,
+  turnKeyOf,
 } from './brief'
 import type { Locale } from './brief'
 
@@ -86,7 +86,7 @@ const summarize = async ($: EngineInterface, locale: Locale) => {
     return isApplied ? setSections(latest, sections, turnNumber) : latest
   })
   if (isApplied && sessionId !== null) {
-    await $.store.set(storeKey(sessionId), { sections, lastAsk: lastAskOf(current), savedAt: await $.clock.now() })
+    await $.store.set(storeKey(sessionId), { sections, turnKey: turnKeyOf(current), savedAt: await $.clock.now() })
   }
 }
 
@@ -112,7 +112,7 @@ const openSession = async ($: EngineInterface, locale: Locale) => {
   const sessionId = await $.session.id()
   const rebuilt = rebuild(await $.session.messages())
   const stored = storedBriefOf(await $.store.get(storeKey(sessionId)))
-  const isUpToDate = stored !== undefined && stored.lastAsk === lastAskOf(rebuilt)
+  const isUpToDate = stored !== undefined && stored.turnKey === turnKeyOf(rebuilt)
 
   await update($, brief, current => ({
     ...rebuilt,
@@ -181,7 +181,13 @@ export const register: Register = on => {
     if (!isInteractive) return next(e)
 
     locale = localeFor((await $.settings.read()).language)
-    await $.command.register({ name: 'brief', description: locale.words.command, immediate: true })
+    // A Claude Code build may hold a built-in /brief of its own, behind a flag,
+    // and a built-in's name is refused; the brief must still open without it.
+    try {
+      await $.command.register({ name: 'brief', description: locale.words.command, immediate: true })
+    } catch (error: unknown) {
+      $.ui.log(`session-brief: /brief was not registered: ${String(error)}`, { to: 'debug' })
+    }
 
     // No session id yet means the mod meets this conversation for the first
     // time: a resumed session, one that ran before the mod was installed, or a
