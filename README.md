@@ -52,10 +52,11 @@ Subagent turns and non-interactive runs (`claude -p`) never call it. When Haiku 
 ## Development
 
 ```bash
-claude plugin validate .   # read the manifest and the hooks module as the engine will
-claude plugin test .       # run hooks/*.test.ts(x) against the engine
-claude --plugin-dir .      # try it in a session
-tsc -p .                   # type-check; needs .claude-plugin/types/, which the engine writes when it loads the mod
+claude plugin validate .claude-plugin/plugin.json   # the plugin: its manifest and its hooks module, read as the engine will
+claude plugin validate .                            # the marketplace manifest (it does not read the hooks module)
+claude plugin test .                                # run hooks/*.test.ts(x) against the engine
+claude --plugin-dir .                               # try it in a session
+tsc -p .                                            # type-check; needs .claude-plugin/types/, which the engine writes when it loads the mod
 ```
 
 ## 日本語
