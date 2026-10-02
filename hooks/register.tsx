@@ -313,12 +313,21 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
+        {/* A titled rule opens the band, so it reads apart from the spinner
+            above it; the prompt's own rule closes it below. */}
         <Box>
-          <Box flexGrow={1} flexShrink={1}>
-            <Text wrap="wrap">{purpose}</Text>
+          <Box flexShrink={0}>
+            <Text dimColor wrap="truncate-end">{`── ${locale.words.title} `}</Text>
+          </Box>
+          {/* A rule as wide as the band, of which this box keeps the one row
+              that fits beside the title and the button. */}
+          <Box flexGrow={1} flexShrink={1} height={1} overflow="hidden">
+            <Text dimColor wrap="wrap">
+              {'─'.repeat(e.props.bodyColumns)}
+            </Text>
           </Box>
           {/* The engine draws its collapse mark over the band's last cells. */}
-          <Box flexShrink={0} marginRight={COLLAPSE_MARK_CELLS}>
+          <Box flexShrink={0} marginLeft={1} marginRight={COLLAPSE_MARK_CELLS}>
             <Button
               key="open"
               label={locale.words.details}
@@ -330,6 +339,7 @@ export const register: Register = on => {
             />
           </Box>
         </Box>
+        <Text wrap="wrap">{purpose}</Text>
         <Text wrap="wrap">{status}</Text>
       </Box>
     )

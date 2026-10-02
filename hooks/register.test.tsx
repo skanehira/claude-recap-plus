@@ -47,7 +47,7 @@ const BRIEF = {
 const replyWith = (text: string) => ({ value: { isAnswered: true as const, text, usage: NO_USAGE } })
 const briefReply = (brief: object = BRIEF) => replyWith(JSON.stringify(brief))
 
-const bandOn = (surface: (typeof SURFACES)[number]) => ({
+const bandOn = (surface: (typeof SURFACES)[number], bodyColumns = 120) => ({
   plugin: PLUGIN,
   surface,
   component: 'AbovePrompt' as const,
@@ -55,7 +55,7 @@ const bandOn = (surface: (typeof SURFACES)[number]) => ({
     hasSurvey: false,
     isWorking: false,
     maxRows: 10,
-    bodyColumns: 120,
+    bodyColumns,
     scroll: { offset: 0, bodyRows: 10 },
     view: {},
   },
@@ -154,8 +154,16 @@ const textsOf = async (
   return found
 }
 
-const bandRows = async ($: Engine, surface: (typeof SURFACES)[number] = 'terminal') =>
+// Every line the band draws, its header included: what a test that expects
+// no band compares, so a header drawn alone would not pass for nothing.
+const bandTexts = async ($: Engine, surface: (typeof SURFACES)[number] = 'terminal') =>
   (await textsOf($, bandOn(surface))).map(one => one.text)
+
+// The title and the rule open a drawn band; the header test pins them, and
+// the rest read the purpose and status rows below.
+const BAND_HEADER_TEXTS = 2
+const bandRows = async ($: Engine, surface: (typeof SURFACES)[number] = 'terminal') =>
+  (await bandTexts($, surface)).slice(BAND_HEADER_TEXTS)
 
 const paneRows = async ($: Engine, surface: (typeof SURFACES)[number] = 'terminal') =>
   (await textsOf($, paneOn(surface))).map(one => one.text)
@@ -183,21 +191,88 @@ const runTurn = async ($: Engine, clock: ReturnType<typeof mock.clock>, ask: str
   await clock.settle()
 }
 
-test('ターンが終わると、Haiku が書いた目的と現状を帯に全文で折り返して出す', async ($, on) => {
-  const clock = mock.clock(on, { now: START })
-  standInForEngine(on)
-  recordModelCalls(on)
+const BAND_LANGUAGES = [
+  { settings: {}, title: 'Session brief', purpose: 'Purpose', status: 'Status' },
+  { settings: { language: 'Japanese' }, title: 'セッション概要', purpose: '目的', status: '現状' },
+] as const
 
-  await startInteractive($)
-  await runTurn($, clock, 'パネルを作りたい', '作りました', 't1')
+for (const { settings, title, purpose, status } of BAND_LANGUAGES) {
+  test(`ターンが終わると、帯の 1 行目に「${title}」の見出しと区切り線を、その下に Haiku が書いた目的と現状を全文で折り返して出す`, async ($, on) => {
+    const clock = mock.clock(on, { now: START })
+    standInForEngine(on, [], settings)
+    recordModelCalls(on)
 
-  for (const surface of SURFACES) {
-    expect(await textsOf($, bandOn(surface)), surface).toEqual([
-      { text: `Purpose: ${BRIEF.purpose}`, wrap: 'wrap' },
-      { text: `Status: ${BRIEF.status}`, wrap: 'wrap' },
-    ])
-  }
+    await startInteractive($)
+    await runTurn($, clock, 'パネルを作りたい', '作りました', 't1')
+
+    // The rule is as wide as the band; the box it sits in keeps one row of it.
+    for (const surface of SURFACES) {
+      expect(await textsOf($, bandOn(surface)), surface).toEqual([
+        { text: `── ${title} `, wrap: 'truncate-end' },
+        { text: '─'.repeat(bandOn(surface).props.bodyColumns), wrap: 'wrap' },
+        { text: `${purpose}: ${BRIEF.purpose}`, wrap: 'wrap' },
+        { text: `${status}: ${BRIEF.status}`, wrap: 'wrap' },
+      ])
+    }
+  })
+}
+
+// The band as drawn: a header row of the dim title, a box keeping one row of
+// a rule as wide as the band, and the details button; the purpose and the
+// status below it, each the band's full width.
+const drawnBand = (columns: number) => ({
+  type: 'Box',
+  props: { flexDirection: 'column' },
+  children: [
+    {
+      type: 'Box',
+      children: [
+        {
+          type: 'Box',
+          props: { flexShrink: 0 },
+          children: [{ type: 'Text', props: { dimColor: true, wrap: 'truncate-end' }, children: ['── Session brief '] }],
+        },
+        {
+          type: 'Box',
+          props: { flexGrow: 1, flexShrink: 1, height: 1, overflow: 'hidden' },
+          children: [{ type: 'Text', props: { dimColor: true, wrap: 'wrap' }, children: ['─'.repeat(columns)] }],
+        },
+        {
+          type: 'Box',
+          props: { flexShrink: 0, marginLeft: 1, marginRight: 4 },
+          children: [
+            {
+              type: 'Button',
+              props: { key: 'open', label: 'details', hotkey: 'b', action: 'app:cycleDiffBase', plain: true, dimColor: true },
+              press: expect.any(Object),
+            },
+          ],
+        },
+      ],
+    },
+    { type: 'Text', props: { wrap: 'wrap' }, children: [`Purpose: ${BRIEF.purpose}`] },
+    { type: 'Text', props: { wrap: 'wrap' }, children: [`Status: ${BRIEF.status}`] },
+  ],
 })
+
+for (const columns of [120, 80]) {
+  test(`帯の幅が ${columns} 桁なら、見出しの行に薄い色の題・1 行に切り取った ${columns} 桁の線・詳細ボタンを並べ、その下に目的と現状を全幅で出す`, async ($, on) => {
+    const clock = mock.clock(on, { now: START })
+    standInForEngine(on)
+    recordModelCalls(on)
+
+    await startInteractive($)
+    await runTurn($, clock, 'パネルを作りたい', '作りました', 't1')
+
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount(bandOn(surface, columns))
+      const drawn = await ui.drawn()
+      await ui.unmount()
+
+      expect(drawn, surface).toEqual(drawnBand(columns))
+    }
+  })
+}
 
 test('ターンの実行中は現状に (working) を付け、前回の内容を出したままにする', async ($, on) => {
   const clock = mock.clock(on, { now: START })
@@ -216,7 +291,7 @@ test('最初のターンの前と survey の表示中は帯を描かず、最初
   standInForEngine(on)
 
   await startInteractive($)
-  const beforeFirstTurn = await bandRows($)
+  const beforeFirstTurn = await bandTexts($)
   await $.turn.start({ text: 'パネルを作りたい', turnId: 't1' })
   const duringFirstTurn = await bandRows($)
   const ui = await $.ui.mount({ ...bandOn('terminal'), props: { ...bandOn('terminal').props, hasSurvey: true } })
@@ -461,7 +536,7 @@ test('/clear で空にし、その前に始まった返答を後の会話に書�
   await startInteractive($)
   await runTurn($, clock, '前の会話の依頼', '前の会話の回答', 't1')
   await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } })
-  const afterClear = await bandRows($)
+  const afterClear = await bandTexts($)
   await runTurn($, clock, '新しい依頼', '新しい回答', 't2')
   await clock.advance(5_000)
 
@@ -475,9 +550,10 @@ test('同じプロセス内の /resume でも空にする', async ($, on) => {
 
   await startInteractive($)
   await runTurn($, clock, '前の会話の依頼', '前の会話の回答', 't1')
+  const beforeResume = await bandRows($)
   await $.session.end({ reason: 'resume', sessionId: 's1', resume: { id: 's1' } })
 
-  expect(await bandRows($)).toEqual([])
+  expect([beforeResume, await bandTexts($)]).toEqual([[`Purpose: ${BRIEF.purpose}`, `Status: ${BRIEF.status}`], []])
 })
 
 const RESUMED: SessionMessage[] = [
@@ -844,7 +920,7 @@ test('この mod の Pane を出している間は帯を描かず、閉じると
   await startInteractive($)
   await runTurn($, clock, 'パネルを作りたい', '作りました', 't1')
   panes.push({ id: PANE_ID, title: 'Session brief', isShown: true, isFocused: false, isPlaced: true })
-  const whileShown = await bandRows($)
+  const whileShown = await bandTexts($)
   panes[0] = { ...panes[0]!, isShown: false }
   const whileBehindAnotherTab = await bandRows($)
   panes.length = 0
@@ -922,7 +998,7 @@ test('同じプロセス内の /resume で別のセッションを開いたら�
   await startInteractive($)
   await runTurn($, clock, '前のセッションの依頼', '前のセッションの回答', 't1')
   await $.session.end({ reason: 'resume', sessionId: 'sess-1', resume: { id: 'sess-1' } })
-  const rightAfterEnd = await bandRows($)
+  const rightAfterEnd = await bandTexts($)
   session.id = 'sess-2'
   transcript.push(...RESUMED)
   await clock.advance(1_000)
