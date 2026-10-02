@@ -48,7 +48,7 @@ const JAPANESE: Words = {
   next: '次にやること',
   working: '(作業中)',
   notYet: '(最初のターンの後に表示)',
-  none: 'なし',
+  none: '(なし)',
   noAnswer: '(回答なし)',
   continued: '(続き)',
   details: '詳細',

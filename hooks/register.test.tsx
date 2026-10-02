@@ -724,6 +724,26 @@ test('Claude Code の language が Japanese なら見出しを日本語にし、
   expect(opened).toEqual([{ id: PANE_ID, title: 'セッション概要', focus: true, closeOnEscape: true, columns: 59 }])
 })
 
+test('language が Japanese なら、空の項目もほかの表示と同じく括弧付きの (なし) と出す', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  standInForEngine(on, [], { language: 'Japanese' })
+  recordModelCalls(on, () => briefReply({ ...BRIEF, done: [], decisions: [], pending: [], next: '' }))
+
+  await startInteractive($)
+  await runTurn($, clock, 'パネルを作りたい', '作りました', 't1')
+
+  expect((await paneRows($)).slice(4)).toEqual([
+    'やったこと',
+    '(なし)',
+    '決定事項',
+    '(なし)',
+    '確認待ち',
+    '(なし)',
+    '次にやること',
+    '(なし)',
+  ])
+})
+
 test('前のターンの返答が後から届いても、新しいターンの概要を上書きしない', async ($, on) => {
   const clock = mock.clock(on, { now: START })
   standInForEngine(on)
