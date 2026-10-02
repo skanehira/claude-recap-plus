@@ -944,3 +944,128 @@ test('依頼文なしで始まった最初のターンは、依頼を (continued
     ].join('\n'),
   ])
 })
+
+test('resume で作り直した最初の要約には、それまでの依頼の一覧も渡す', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  standInForEngine(on, RESUMED)
+  const prompts: string[] = []
+  on('model.complete', (_$, e) => {
+    prompts.push(e.prompt)
+
+    return replyWith('要約')
+  })
+
+  await startInteractive($)
+  await clock.settle()
+
+  expect(prompts).toEqual([
+    [
+      '<previous_summary>(none)</previous_summary>',
+      '<earlier_requests>',
+      '- T1 最初の依頼',
+      '</earlier_requests>',
+      '<latest_request>次の依頼</latest_request>',
+      '<latest_answer>実装しました</latest_answer>',
+      '<questions_and_answers>',
+      '(none)',
+      '</questions_and_answers>',
+    ].join('\n'),
+  ])
+})
+
+test('compact された会話を作り直すときは、compact の要約を最初の要約の材料に渡す', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  const compacted = `This session is being continued from a previous conversation that ran out of context.\nSummary: 認証の改修を進めていた。${'経'.repeat(2100)}`
+  standInForEngine(on, [
+    { role: 'user', text: compacted, toolUses: [] },
+    { role: 'user', text: '続きをやって', toolUses: [] },
+    { role: 'assistant', text: 'テストを直しました', toolUses: [] },
+  ])
+  const prompts: string[] = []
+  on('model.complete', (_$, e) => {
+    prompts.push(e.prompt)
+
+    return replyWith('要約')
+  })
+
+  await startInteractive($)
+  await clock.settle()
+
+  expect(prompts).toEqual([
+    [
+      '<previous_summary>(none)</previous_summary>',
+      `<earlier_context>${compacted.slice(0, 1999)}…</earlier_context>`,
+      '<latest_request>続きをやって</latest_request>',
+      '<latest_answer>テストを直しました</latest_answer>',
+      '<questions_and_answers>',
+      '(none)',
+      '</questions_and_answers>',
+    ].join('\n'),
+  ])
+})
+
+test('最初の要約に渡す依頼の一覧は、最後のターンの前の直近 20 件までにする', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  standInForEngine(
+    on,
+    Array.from({ length: 25 }, (_, index) => [
+      { role: 'user' as const, text: `依頼${index + 1}`, toolUses: [] },
+      { role: 'assistant' as const, text: `回答${index + 1}`, toolUses: [] },
+    ]).flat(),
+  )
+  const prompts: string[] = []
+  on('model.complete', (_$, e) => {
+    prompts.push(e.prompt)
+
+    return replyWith('要約')
+  })
+
+  await startInteractive($)
+  await clock.settle()
+
+  expect(prompts).toEqual([
+    [
+      '<previous_summary>(none)</previous_summary>',
+      '<earlier_requests>',
+      ...Array.from({ length: 20 }, (_, index) => `- T${index + 5} 依頼${index + 5}`),
+      '</earlier_requests>',
+      '<latest_request>依頼25</latest_request>',
+      '<latest_answer>回答25</latest_answer>',
+      '<questions_and_answers>',
+      '(none)',
+      '</questions_and_answers>',
+    ].join('\n'),
+  ])
+})
+
+test('compact の直後に再開したときも、compact の要約を次のターンの要約に渡す', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  const compacted = 'This session is being continued from a previous conversation that ran out of context.\nSummary: 認証の改修を進めていた'
+  standInForEngine(on, [{ role: 'user', text: compacted, toolUses: [] }])
+  const prompts: string[] = []
+  on('model.complete', (_$, e) => {
+    prompts.push(e.prompt)
+
+    return replyWith('要約')
+  })
+
+  await startInteractive($)
+  await clock.settle()
+  const beforeTurn = await bandRows($, 'terminal')
+  await $.turn.start({ text: '続きをやって', turnId: 't1' })
+  await completeTurn($, 'テストを直しました', 't1')
+  await clock.settle()
+
+  expect(beforeTurn).toEqual([])
+  expect(prompts).toEqual([
+    [
+      '<previous_summary>(none)</previous_summary>',
+      `<earlier_context>${compacted}</earlier_context>`,
+      '<latest_request>続きをやって</latest_request>',
+      '<latest_answer>テストを直しました</latest_answer>',
+      '<questions_and_answers>',
+      '(none)',
+      '</questions_and_answers>',
+    ].join('\n'),
+  ])
+})

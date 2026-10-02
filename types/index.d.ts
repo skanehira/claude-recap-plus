@@ -21,6 +21,8 @@ export type Brief = {
   turns: TurnEntry[]
   questions: QuestionAnswer[]
   summary: Summary | null
+  /** What a compaction kept of the turns before it, read back on a resume. */
+  background: string | null
   isWorking: boolean
   /** Counts the conversations this process has held; a /clear or /resume moves it on. */
   epoch: number

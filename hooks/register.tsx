@@ -95,10 +95,12 @@ export const register: Register = (on, options) => {
     // nothing to read back. A reload of this module finds its state kept.
     if ((await read($, brief)).turns.length === 0) {
       const rebuilt = rebuild(await $.session.messages())
-      if (rebuilt.turns.length > 0) {
+      // Right after a compaction there may be no turn to show yet, but what the
+      // compaction kept still feeds the first summary of the turns to come.
+      if (rebuilt.turns.length > 0 || rebuilt.background !== null) {
         await update($, brief, current => ({ ...rebuilt, epoch: current.epoch }))
-        summarizeLater($, words)
       }
+      if (rebuilt.turns.length > 0) summarizeLater($, words)
     }
 
     return next(e)

@@ -89,6 +89,7 @@ export const EMPTY: Brief = {
   turns: [],
   questions: [],
   summary: null,
+  background: null,
   isWorking: false,
   epoch: 0,
 }
@@ -101,6 +102,10 @@ export const startOver = (brief: Brief): Brief => ({ ...EMPTY, epoch: brief.epoc
 const ASK_CHARS = 800
 const ANSWER_CHARS = 1500
 const SUMMARY_CHARS = 120
+// What the first summary of a session read back gets of its history.
+const CONTEXT_CHARS = 2000
+const EARLIER_TURNS = 20
+const EARLIER_CHARS = 120
 
 const clip = (text: string, chars: number): string =>
   text.length > chars ? `${text.slice(0, chars - 1)}…` : text
@@ -114,11 +119,14 @@ const PROMPT_COMMAND =
 
 const PASTED = /<\/?pasted_content\b[^>]*>/g
 
+// How a compaction's summary of the turns before it opens.
+const COMPACTED = 'This session is being continued from a previous conversation'
+
 // Text the engine writes into a user turn that the person did not type.
 const INJECTED = [
   'Another Claude session sent a message:',
   '[Request interrupted by user',
-  'This session is being continued from a previous conversation',
+  COMPACTED,
   'Base directory for this skill:',
 ]
 
@@ -271,8 +279,32 @@ export const summaryFromReply = (reply: string): string | undefined => {
 }
 
 /**
+ * The history a first summary is written from, when there is no summary to
+ * carry on: what a compaction kept, and the requests before the last turn.
+ */
+const historyLines = (brief: Brief, words: Words): string[] => {
+  if (brief.summary !== null) return []
+
+  const earlier = brief.turns.slice(0, -1).slice(-EARLIER_TURNS)
+
+  return [
+    ...(brief.background === null ? [] : [`<earlier_context>${brief.background}</earlier_context>`]),
+    ...(earlier.length === 0
+      ? []
+      : [
+          '<earlier_requests>',
+          ...earlier.map(
+            turn => `- T${turn.turn} ${turn.ask === null ? words.continued : clip(headLine(turn.ask), EARLIER_CHARS)}`,
+          ),
+          '</earlier_requests>',
+        ]),
+  ]
+}
+
+/**
  * What to ask the model for the summary after the last turn: the previous
- * summary, the turn's request and answer, and the questions answered in it.
+ * summary (or, before there is one, the history), the turn's request and
+ * answer, and the questions answered in it.
  */
 export const summaryRequest = (
   brief: Brief,
@@ -286,6 +318,7 @@ export const summaryRequest = (
     .map(one => `- ${one.question} → ${answerText(one.answer, words)}`)
   const prompt = [
     `<previous_summary>${brief.summary?.text ?? words.none}</previous_summary>`,
+    ...historyLines(brief, words),
     `<latest_request>${turn.ask ?? words.continued}</latest_request>`,
     `<latest_answer>${turn.answer ?? ''}</latest_answer>`,
     `<questions_and_answers>\n${answered.join('\n') || words.none}\n</questions_and_answers>`,
@@ -331,6 +364,10 @@ const isPrompt = (row: SessionMessage): boolean =>
 export const rebuild = (rows: readonly SessionMessage[]): Brief => {
   const rebuilt = rows.reduce<Brief>((brief, row) => {
     if (row.role === 'user') {
+      if (row.text.trimStart().startsWith(COMPACTED)) {
+        return { ...brief, background: clip(row.text.trim(), CONTEXT_CHARS) }
+      }
+
       return isPrompt(row) ? { ...startTurn(brief, row.text, 0), isWorking: false } : brief
     }
     if (brief.turns.length === 0) return brief
