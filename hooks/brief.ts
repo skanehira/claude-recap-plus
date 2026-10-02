@@ -6,7 +6,6 @@ export const EMPTY: Brief = {
   turns: [],
   questions: [],
   summary: null,
-  waiting: null,
   isWorking: false,
 }
 
@@ -21,12 +20,22 @@ const clip = (text: string, chars: number): string =>
 
 const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
 
+const COMMAND = /<command-name>(\/[^<]+)<\/command-name>(?:\s*<command-args>([\s\S]*?)<\/command-args>)?/
+
 /**
- * Whether a turn's text is a request the person wrote: a continuation starts
- * with none, and text the engine injects (notifications, reminders) opens
- * with a tag.
+ * The request a turn's text carries, or undefined when it carries none. A
+ * slash command arrives as its markup and reads as `/name args`; a
+ * continuation starts with no text, and text the engine injects
+ * (notifications, reminders) opens with a tag.
  */
-const isRequest = (text: string): boolean => text.trim() !== '' && !text.trimStart().startsWith('<')
+const requestOf = (text: string): string | undefined => {
+  const command = COMMAND.exec(text)
+  if (command) return [command[1], command[2]?.trim()].filter(Boolean).join(' ')
+
+  const trimmed = text.trim()
+
+  return trimmed === '' || trimmed.startsWith('<') ? undefined : trimmed
+}
 
 const lastTurn = (brief: Brief): TurnEntry | undefined => brief.turns.at(-1)
 
@@ -37,14 +46,15 @@ const withLastTurn = (brief: Brief, change: (turn: TurnEntry) => TurnEntry): Tur
  * Starts a turn: a new one for a request, or the last one again for a turn
  * that carries none (its answer then replaces the last one's).
  */
-export const startTurn = (brief: Brief, ask: string, now: number): Brief => {
+export const startTurn = (brief: Brief, text: string, now: number): Brief => {
+  const request = requestOf(text)
   const turns =
-    isRequest(ask) || brief.turns.length === 0
+    request !== undefined || brief.turns.length === 0
       ? [
           ...brief.turns,
           {
             turn: brief.turns.length + 1,
-            ask: isRequest(ask) ? clip(ask.trim(), ASK_CHARS) : '(続き)',
+            ask: request === undefined ? '(続き)' : clip(request, ASK_CHARS),
             answer: null,
             startedAt: now,
             endedAt: null,
@@ -52,13 +62,12 @@ export const startTurn = (brief: Brief, ask: string, now: number): Brief => {
         ]
       : withLastTurn(brief, turn => ({ ...turn, answer: null, startedAt: now, endedAt: null }))
 
-  return { ...brief, turns, waiting: null, isWorking: true }
+  return { ...brief, turns, isWorking: true }
 }
 
 export const completeTurn = (brief: Brief, answer: string, now: number): Brief => ({
   ...brief,
   turns: withLastTurn(brief, turn => ({ ...turn, answer: clip(answer, ANSWER_CHARS), endedAt: now })),
-  waiting: null,
   isWorking: false,
 })
 
@@ -68,7 +77,6 @@ export const askQuestions = (brief: Brief, asked: readonly Question[]): Brief =>
     ...brief.questions,
     ...asked.map(one => ({ ...one, turn: brief.turns.length, answer: null })),
   ],
-  waiting: { kind: 'question', headers: asked.map(one => one.header) },
 })
 
 /**
@@ -84,16 +92,7 @@ export const answerQuestions = (
   questions: brief.questions.map(one =>
     one.answer === null ? { ...one, answer: answers[one.question] ?? freeText ?? '(回答なし)' } : one,
   ),
-  waiting: null,
 })
-
-export const awaitPermission = (brief: Brief, tool: string): Brief => ({
-  ...brief,
-  waiting: { kind: 'permission', tool },
-})
-
-export const clearPermission = (brief: Brief): Brief =>
-  brief.waiting?.kind === 'permission' ? { ...brief, waiting: null } : brief
 
 export const formatElapsed = (ms: number): string => {
   const seconds = Math.max(0, Math.floor(ms / 1000))
@@ -115,10 +114,7 @@ const latestAnswer = (brief: Brief): string | undefined => {
 export const statusLine = (brief: Brief, now: number): string => {
   const turn = lastTurn(brief)
   const label = `T${brief.turns.length}`
-  const { waiting } = brief
 
-  if (waiting?.kind === 'question') return `${label} ? 質問待ち · ${waiting.headers.join(' / ')}`
-  if (waiting?.kind === 'permission') return `${label} ! 権限待ち · ${waiting.tool}`
   if (brief.isWorking) return `${label} ▶ 作業中 ${formatElapsed(now - (turn?.startedAt ?? now))}`
 
   const ago = turn?.endedAt ? ` ${formatElapsed(now - turn.endedAt)}前` : ''
@@ -222,7 +218,7 @@ const questionsOf = (input: Record<string, unknown>): Question[] =>
 
 /** Whether a user row is a request the person sent, not a tool's result. */
 const isPrompt = (row: SessionMessage): boolean =>
-  isRequest(row.text) && (row.toolResults?.length ?? 0) === 0
+  requestOf(row.text) !== undefined && (row.toolResults?.length ?? 0) === 0
 
 /**
  * The brief a transcript read back implies, for a session resumed in a new
@@ -253,7 +249,7 @@ export const rebuild = (rows: readonly SessionMessage[]): Brief => {
       : { ...asked, turns: withLastTurn(asked, turn => ({ ...turn, answer: clip(row.text, ANSWER_CHARS) })) }
   }, EMPTY)
 
-  return { ...rebuilt, waiting: null, isWorking: false }
+  return { ...rebuilt, isWorking: false }
 }
 
 const headLine = (text: string | null): string =>

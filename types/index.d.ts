@@ -13,17 +13,12 @@ export type TurnEntry = {
   endedAt: number | null
 }
 
-export type Waiting =
-  | { kind: 'question'; headers: string[] }
-  | { kind: 'permission'; tool: string }
-
 export type Summary = { text: string; turn: number }
 
 export type Brief = {
   turns: TurnEntry[]
   questions: QuestionAnswer[]
   summary: Summary | null
-  waiting: Waiting | null
   isWorking: boolean
 }
 

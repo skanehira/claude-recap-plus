@@ -57,7 +57,7 @@ const bandRows = async ($: Engine, surface: (typeof SURFACES)[number]) => {
 const startInteractive = ($: Engine) =>
   $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
 
-test('AskUserQuestion の回答待ちの間、Band の 1 行目が質問待ちになる', async ($, on) => {
+test('AskUserQuestion のダイアログの間も 1 行目は作業中のままにする', async ($, on) => {
   mock.clock(on, { now: START })
   standInForEngine(on)
   const seen: Record<string, string[]> = {}
@@ -77,7 +77,7 @@ test('AskUserQuestion の回答待ちの間、Band の 1 行目が質問待ち�
   await $.tool.call({ tool: 'AskUserQuestion', questions: QUESTIONS })
 
   for (const surface of SURFACES) {
-    expect(seen[surface]?.[0], surface).toBe('T1 ? 質問待ち · 一覧要件')
+    expect(seen[surface]?.[0], surface).toBe('T1 ▶ 作業中 0s')
   }
 })
 
@@ -136,7 +136,7 @@ test('ターンの実行中は 1 行目が作業中と経過時間になる', as
   }
 })
 
-test('権限確認ダイアログの間は権限待ちになり、ツールが終わると作業中に戻る', async ($, on) => {
+test('権限確認ダイアログの間も 1 行目は作業中のままにする', async ($, on) => {
   mock.clock(on, { now: START })
   standInForEngine(on)
   on('classic.PermissionRequest', () => ({}))
@@ -151,9 +151,8 @@ test('権限確認ダイアログの間は権限待ちになり、ツールが�
   await startInteractive($)
   await $.turn.start({ text: '一覧して', turnId: 't1' })
   await $.tool.call({ tool: 'Bash', command: 'ls' })
-  seen.push((await bandRows($, 'terminal'))[0] ?? '')
 
-  expect(seen).toEqual(['T1 ! 権限待ち · Bash', 'T1 ▶ 作業中 0s'])
+  expect(seen).toEqual(['T1 ▶ 作業中 0s'])
 })
 
 const NO_USAGE = {
@@ -485,4 +484,48 @@ test('依頼文なしで始まるターンや注入された行は、直前の�
     '質問と回答',
     '(まだありません)',
   ])
+})
+
+test('/ コマンドで始めたターンは、コマンド名と引数を依頼として数える', async ($, on) => {
+  mock.clock(on, { now: START })
+  standInForEngine(on)
+  recordPaneOpens(on)
+
+  await startInteractive($)
+  await $.turn.start({
+    text: '<command-message>dev-impl</command-message>\n<command-name>/dev-impl</command-name>\n<command-args>3 件実装して</command-args>',
+    turnId: 't1',
+  })
+  await $.turn.start({
+    text: '<command-message>brief</command-message>\n<command-name>/brief</command-name>',
+    turnId: 't2',
+  })
+
+  const ui = await $.ui.mount(paneOn('terminal'))
+  const rows = (await ui.findAll({ type: 'Text' })).map(found => found.text)
+  await ui.unmount()
+
+  expect(rows.slice(1, 6)).toEqual([
+    'ターン',
+    'T1 依頼: /dev-impl 3 件実装して',
+    '   回答: (作業中)',
+    'T2 依頼: /brief',
+    '   回答: (作業中)',
+  ])
+})
+
+test('同じプロセスで別のセッションへ /resume したら状態を空にし、T1 から数え直す', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  standInForEngine(on)
+  on('model.complete', () => replyWith('前のセッションの要約'))
+  on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+
+  await startInteractive($)
+  await $.turn.start({ text: '前のセッションの依頼', turnId: 't1' })
+  await completeTurn($, '前のセッションの回答', 't1')
+  await clock.settle()
+  await $.session.end({ reason: 'resume', sessionId: 's1', resume: { id: 's1' } })
+  await $.turn.start({ text: '別のセッションの依頼', turnId: 't2' })
+
+  expect(await bandRows($, 'terminal')).toEqual(['T1 ▶ 作業中 0s', '目的: (要約待ち)'])
 })

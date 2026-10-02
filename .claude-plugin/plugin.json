@@ -1,7 +1,7 @@
 {
   "name": "session-brief",
   "version": "0.1.0",
-  "description": "Shows above the prompt what this session is working on, what it waits for, and the questions asked and answered",
+  "description": "Shows above the prompt what this session is working on, what it last answered, and a one-line summary; /brief opens every turn and every question asked and answered",
   "author": {
     "name": "skanehira"
   },

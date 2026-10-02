@@ -5,8 +5,6 @@ import {
   EMPTY,
   answerQuestions,
   askQuestions,
-  awaitPermission,
-  clearPermission,
   answersOf,
   completeTurn,
   fallbackSummary,
@@ -97,7 +95,11 @@ export const register: Register = on => {
   })
 
   on('session.end', async ($, e, next) => {
-    if (isInteractive && e.reason === 'clear') await update($, brief, () => EMPTY)
+    // A /clear starts a new conversation and an in-process /resume moves to
+    // another one; neither raises session.start again, so start over here.
+    if (isInteractive && (e.reason === 'clear' || e.reason === 'resume')) {
+      await update($, brief, () => EMPTY)
+    }
 
     return next(e)
   })
@@ -135,23 +137,6 @@ export const register: Register = on => {
     await update($, brief, current =>
       answerQuestions(current, answersOf(answered), answered?.response),
     )
-
-    return ran
-  })
-
-  on('classic.PermissionRequest', async ($, e, next) => {
-    if (isInteractive && e.tool_name !== 'AskUserQuestion') {
-      await update($, brief, current => awaitPermission(current, e.tool_name))
-    }
-
-    return next(e)
-  })
-
-  on('tool.call', async ($, e, next) => {
-    const ran = await next(e)
-    if (isInteractive && (await read($, brief)).waiting?.kind === 'permission') {
-      await update($, brief, clearPermission)
-    }
 
     return ran
   })
