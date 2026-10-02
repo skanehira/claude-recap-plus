@@ -15,14 +15,14 @@ Haiku rewrites the brief after every turn of the main conversation. It works fro
 - **The band above the prompt** shows the purpose and the status. While a turn runs, the status keeps the last brief and is marked `(working)`.
 - **`/brief`** opens a pane with all six parts of the brief. So does ctrl+x b once you add the key bindings below, and so does the band's `details` button. While the pane is shown, the band steps aside, since the pane says the same and more.
 
-| Part | What it says |
-| --- | --- |
-| Purpose | What the session is for, naming the concrete target (a pull request, a file, a feature) |
-| Status | Where the work stands now |
-| Done | What has been done so far, up to 5 items |
-| Decisions | What has been decided, including your answers to Claude's questions, up to 5 items |
-| Waiting on you | What Claude is waiting for you to answer or do |
-| Next | What Claude will do next |
+| Part           | What it says                                                                            |
+| -------------- | --------------------------------------------------------------------------------------- |
+| Purpose        | What the session is for, naming the concrete target (a pull request, a file, a feature) |
+| Status         | Where the work stands now                                                               |
+| Done           | What has been done so far, up to 5 items                                                |
+| Decisions      | What has been decided, including your answers to Claude's questions, up to 5 items      |
+| Waiting on you | What Claude is waiting for you to answer or do                                          |
+| Next           | What Claude will do next                                                                |
 
 Nothing is drawn before the first turn. Until the first brief is written, the band says `(after the first turn)`.
 
@@ -32,10 +32,10 @@ The brief is saved per session. Opening a session that was already analyzed show
 
 With these bindings in `~/.claude/keybindings.json`, ctrl+x is the prefix for the brief:
 
-| Keys | What they do |
-| --- | --- |
-| ctrl+x b | Open the pane with the whole brief |
-| ctrl+x i | Fold the band away; press again to bring it back |
+| Keys     | What they do                                                      |
+| -------- | ----------------------------------------------------------------- |
+| ctrl+x b | Open the pane with the whole brief, or close it while it is shown |
+| ctrl+x i | Fold the band away; press again to bring it back                  |
 
 ```json
 {
@@ -53,7 +53,7 @@ With these bindings in `~/.claude/keybindings.json`, ctrl+x is the prefix for th
 
 A mod cannot define a key action of its own, so ctrl+x b borrows one. `app:cycleDiffBase` is the diff panel's action for cycling its comparison base, and Claude Code handles it only while the diff panel is open. Inside the diff panel, ctrl+x b still cycles the base. Elsewhere, the band's `details` button answers it and opens the pane. `abovePrompt:toggle` is Claude Code's own action for folding the band, bound to ctrl+x ctrl+a by default; ctrl+x i only adds a second key for it.
 
-Without the bindings, open the pane with `/brief`, or press ctrl+x tab to focus the band and then `b`. Fold the band with ctrl+x ctrl+a.
+The pane also closes with its `close` button (press `b` while the pane has the keyboard) or with Esc. Without the bindings, open the pane with `/brief`, or press ctrl+x tab to focus the band and then `b`. Fold the band with ctrl+x ctrl+a.
 
 ## Install
 
@@ -73,15 +73,15 @@ The brief follows Claude Code's own `language` setting. With `"language": "Japan
 
 After each turn of the main conversation, the mod makes one Haiku call through your own Claude Code session, on the same account and provider. Opening a session makes one more call only when its saved brief is missing or out of date. The call carries only these parts of the session:
 
-| Part | Limit |
-| --- | --- |
-| The previous brief | its six parts |
-| Your request in that turn | first 800 characters |
-| Claude's final answer in that turn | first 3000 characters |
-| The questions asked and answered in that turn | all |
-| What the turn did: shell commands by their description, edited and written files, subagents, skills, web fetches and searches, MCP tools | up to 30 lines |
-| Before there is a brief to carry on: your earlier requests | the last 20, 120 characters each |
-| Before there is a brief to carry on, in a session that was compacted: the summary the compaction kept | first 2000 characters |
+| Part                                                                                                                                     | Limit                            |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| The previous brief                                                                                                                       | its six parts                    |
+| Your request in that turn                                                                                                                | first 800 characters             |
+| Claude's final answer in that turn                                                                                                       | first 3000 characters            |
+| The questions asked and answered in that turn                                                                                            | all                              |
+| What the turn did: shell commands by their description, edited and written files, subagents, skills, web fetches and searches, MCP tools | up to 30 lines                   |
+| Before there is a brief to carry on: your earlier requests                                                                               | the last 20, 120 characters each |
+| Before there is a brief to carry on, in a session that was compacted: the summary the compaction kept                                    | first 2000 characters            |
 
 Reading and searching files is not sent. Subagent turns and the tools subagents call are not sent, and they never trigger a call. Non-interactive runs (`claude -p`) never call it. When Haiku gives no usable reply, for example on a backend without Haiku, the first line of the final answer that is not a heading becomes the status.
 
@@ -92,6 +92,36 @@ Reading and searching files is not sent. Subagent turns and the tools subagents 
 - **Where the briefs are kept.** In the mod's own store, a JSON file under `~/.claude/plugins/store/`, one entry per session id. The newest 200 sessions are kept; older entries are removed when a session starts.
 - **`/clear` starts over.** The new conversation gets its own brief, saved under its new session id.
 - **Claude Code only.** Codex, OpenCode and other agents have no mod API, so their sessions show nothing.
+
+## Troubleshooting
+
+**The band does not show.** Check these in order:
+
+1. The mod is loaded: typing `/br` offers `/brief`. If it does not, check in `/plugin` that session-brief is enabled, then run `/reload-plugins`. Plugin hooks also stay off where your settings or your organization's policy turn hooks off.
+2. A request has started. The band shows from your first request on, and it steps aside while a dialog or a survey is up.
+3. The band is not folded. A folded band reads `▸ plugin panel hidden`; press ctrl+x ctrl+a (or ctrl+x i with the bindings above) to bring it back.
+4. The session is interactive. Non-interactive runs (`claude -p`) never show it.
+
+**The brief does not update.** Start Claude Code with `claude --debug` and look for the mod's lines in the debug log:
+
+```bash
+rg 'session-brief:' ~/.claude/debug/latest
+```
+
+`summary failed` means the Haiku call itself failed, for example because your settings do not allow Haiku.
+
+**The brief is wrong.** Each brief is rewritten from the previous one, so a mistake can stay. To have it written again from the conversation:
+
+1. Quit every Claude Code process that has the session open. While one runs, it still holds the brief and saves it again.
+2. Remove the session's entry from the store. The store is a file named `session-brief_<…>.json` in `~/.claude/plugins/store/`, one per way the mod was loaded. The session id is the name of the session's transcript file under `~/.claude/projects/`.
+
+   ```bash
+   f=~/.claude/plugins/store/session-brief_<…>.json
+   jq 'del(."brief:<session id>")' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+   ```
+
+   To start over for every session, delete the file instead.
+3. Open the session again with `claude --resume`. The mod reads the conversation back and writes a new brief.
 
 ## Development
 
@@ -105,7 +135,7 @@ tsc -p .                                            # type-check; needs .claude-
 
 ## 日本語
 
-prompt の上に、このセッションの概要を出す Claude Code の mod です。main のターンが終わるたびに、Haiku が概要を書き直します。帯には目的と現状を、省略せずに折り返して出します。`/brief` か ctrl+x b では、6 項目すべてを Pane に出します。ctrl+x i で帯をたたみ、もう一度押すと戻ります。ctrl+x b と ctrl+x i を使うには、上の「Keys」の設定を `~/.claude/keybindings.json` に足します。6 項目は、目的、現状、やったこと、決定事項、確認待ち、次にやることです。
+prompt の上に、このセッションの概要を出す Claude Code の mod です。main のターンが終わるたびに、Haiku が概要を書き直します。帯には目的と現状を、省略せずに折り返して出します。`/brief` か ctrl+x b では、6 項目すべてを Pane に出します。ctrl+x b はもう一度押すと Pane を閉じます。ctrl+x i で帯をたたみ、もう一度押すと戻ります。ctrl+x b と ctrl+x i を使うには、上の「Keys」の設定を `~/.claude/keybindings.json` に足します。6 項目は、目的、現状、やったこと、決定事項、確認待ち、次にやることです。
 
 概要はセッションごとに保存します。解析済みのセッションを開くと、保存した概要をすぐに出します。まだ解析していないセッションや、保存した後に会話が進んだセッションは、開いた時点で解析します。
 
