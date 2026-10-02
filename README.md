@@ -7,7 +7,8 @@
 A [Claude Code](https://claude.com/claude-code) mod that keeps a brief of the session right above the prompt. When you run several sessions side by side, switching to one tells you at a glance what it is for and where it stands, without scrolling back through the conversation.
 
 ```text
-Purpose: Add retry with backoff to the payment webhook handler                  b: details
+── Session brief ──────────────────────────────────────────────────── b: details
+Purpose: Add retry with backoff to the payment webhook handler
 Status: The tests pass locally. Claude is waiting for your OK to open the pull
 request.
 ```
@@ -16,7 +17,7 @@ request.
 
 Haiku rewrites the brief after every turn of the main conversation (the conversation you type into, not a subagent's). It works from the previous brief, your request, Claude's answer, the questions Claude asked with your answers, and what the turn did with its tools. No line is cut off at the edge of the screen; each one wraps. Each part Haiku writes holds up to 500 characters, and a longer one ends in `…`.
 
-- **The band above the prompt** shows the purpose and the status.
+- **The band above the prompt** opens with a `── Session brief ──` rule, which sets it apart from the lines above it, and shows the purpose and the status below the rule. The `details` button sits at the rule's right end.
 - **`/brief`** opens a pane titled "Session brief" with all six parts. So does ctrl+x b once you add the key bindings below, and so does the band's `details` button. While the pane is shown, the band steps aside, since the pane says the same and more.
 
 | Part           | What it says                                                                            |
