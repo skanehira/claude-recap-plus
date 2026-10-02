@@ -270,10 +270,14 @@ export const register: Register = on => {
           </Box>
           {/* The engine draws its collapse mark over the band's last cells. */}
           <Box flexShrink={0} marginRight={COLLAPSE_MARK_CELLS}>
+            {/* `action` lets a chord bound to app:cycleDiffBase (ctrl+x b in the
+                README's keybindings) press this from the prompt; the engine only
+                handles that action itself inside the diff panel. */}
             <Button
               key="open"
               label={locale.words.details}
               hotkey="b"
+              action="app:cycleDiffBase"
               plain
               dimColor
               onPress={() => $.ui.open(pane())}
