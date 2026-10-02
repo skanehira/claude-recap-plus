@@ -1,21 +1,9 @@
 {
   "name": "session-brief",
   "version": "0.1.0",
-  "description": "Shows above the prompt what this session is working on, what it last answered, and a one-line summary; /brief opens every turn and every question asked and answered",
+  "description": "Keeps a brief of the session above the prompt: what it is for and where it stands; /brief adds what was done and decided, what waits on you, and what comes next",
   "author": {
     "name": "skanehira"
-  },
-  "userConfig": {
-    "language": {
-      "type": "string",
-      "title": "Language",
-      "description": "Language of the band, the pane and the summary",
-      "options": [
-        "en",
-        "ja"
-      ],
-      "default": "en"
-    }
   },
   "types": "./types/index.d.ts"
 }
