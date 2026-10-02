@@ -10,7 +10,7 @@
     {
       "name": "session-brief",
       "source": "./",
-      "description": "Shows above the prompt what this session is working on, what it last answered, and a one-line summary; /brief opens every turn and every question asked and answered"
+      "description": "Keeps a brief of the session above the prompt: what it is for and where it stands; /brief adds what was done and decided, what waits on you, and what comes next"
     }
   ]
 }
