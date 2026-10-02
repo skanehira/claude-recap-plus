@@ -1,0 +1,9 @@
+{
+  "name": "session-brief",
+  "version": "0.1.0",
+  "description": "Shows above the prompt what this session is working on, what it waits for, and the questions asked and answered",
+  "author": {
+    "name": "skanehira"
+  },
+  "types": "./types/index.d.ts"
+}
