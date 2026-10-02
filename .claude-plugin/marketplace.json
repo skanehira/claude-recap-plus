@@ -1,0 +1,16 @@
+{
+  "name": "claude-session-brief",
+  "owner": {
+    "name": "skanehira"
+  },
+  "metadata": {
+    "description": "A Claude Code mod that shows what each session is working on, right above the prompt"
+  },
+  "plugins": [
+    {
+      "name": "session-brief",
+      "source": "./",
+      "description": "Shows above the prompt what this session is working on, what it last answered, and a one-line summary; /brief opens every turn and every question asked and answered"
+    }
+  ]
+}
