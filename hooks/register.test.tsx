@@ -744,6 +744,74 @@ test('language が Japanese なら、空の項目もほかの表示と同じく�
   ])
 })
 
+const FALLBACK_BAND = ['Purpose: パネルを作りたい', 'Status: 作りました']
+
+const HAIKU_REPLIES = [
+  {
+    name: 'API エラー',
+    reply: { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit', usage: NO_USAGE },
+    answer: '作りました',
+    logs: ['session-brief: Haiku gave no brief: api-error status=429 error=rate_limit'],
+    band: FALLBACK_BAND,
+  },
+  {
+    name: '空の返答',
+    reply: { isAnswered: false, reason: 'empty-reply', usage: NO_USAGE },
+    answer: '作りました',
+    logs: ['session-brief: Haiku gave no brief: empty-reply'],
+    band: FALLBACK_BAND,
+  },
+  {
+    name: '時間切れ',
+    reply: { isAnswered: false, reason: 'aborted', usage: NO_USAGE },
+    answer: '作りました',
+    logs: ['session-brief: Haiku gave no brief: aborted'],
+    band: FALLBACK_BAND,
+  },
+  {
+    name: '概要の JSON ではない返答',
+    reply: { isAnswered: true, text: 'JSON ではない返答', usage: NO_USAGE },
+    answer: '作りました',
+    logs: ['session-brief: Haiku gave no brief: unreadable-reply'],
+    band: FALLBACK_BAND,
+  },
+  {
+    // The answer has no line to stand in, so the brief does not change on
+    // screen and the debug line is the only sign of why.
+    name: '空の返答で、最終回答に見出ししか無い',
+    reply: { isAnswered: false, reason: 'empty-reply', usage: NO_USAGE },
+    answer: '## 見出しだけ',
+    logs: ['session-brief: Haiku gave no brief: empty-reply'],
+    band: ['Purpose: (after the first turn)', 'Status: (after the first turn)'],
+  },
+  {
+    name: '概要の JSON',
+    reply: { isAnswered: true, text: JSON.stringify(BRIEF), usage: NO_USAGE },
+    answer: '作りました',
+    logs: [],
+    band: [`Purpose: ${BRIEF.purpose}`, `Status: ${BRIEF.status}`],
+  },
+] as const
+
+for (const { name, reply, answer, logs, band } of HAIKU_REPLIES) {
+  test(`Haiku の返答が「${name}」なら、概要を使えなかったときだけ理由を debug ログに 1 行出す`, async ($, on) => {
+    const clock = mock.clock(on, { now: START })
+    standInForEngine(on)
+    on('model.complete', () => ({ value: reply }))
+    const logged: unknown[] = []
+    on('ui.log', (_$, e) => {
+      logged.push(e)
+
+      return { value: undefined }
+    })
+
+    await startInteractive($)
+    await runTurn($, clock, 'パネルを作りたい', answer, 't1')
+
+    expect([logged, await bandRows($)]).toEqual([logs.map(text => ({ text, to: 'debug' })), band])
+  })
+}
+
 test('前のターンの返答が後から届いても、新しいターンの概要を上書きしない', async ($, on) => {
   const clock = mock.clock(on, { now: START })
   standInForEngine(on)

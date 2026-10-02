@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, ModelCompleteResult, Register } from 'claude-code'
 
 import {
   EMPTY,
@@ -54,6 +54,13 @@ const storeKey = (sessionId: string): string => `brief:${sessionId}`
 const SESSION_POLL_MS = 500
 const SESSION_POLL_TRIES = 20
 
+/** Why a reply holds no brief, for the debug log: the engine's reason, or a reply that is not the JSON asked for. */
+const whyNoBrief = (reply: ModelCompleteResult): string => {
+  if (reply.isAnswered) return 'unreadable-reply'
+
+  return reply.reason === 'api-error' ? `api-error status=${reply.status} error=${reply.error}` : reply.reason
+}
+
 /**
  * Asks Haiku to rewrite the brief after the last turn and keeps it; when the
  * model gives nothing usable (a backend without Haiku, an error, a reply that
@@ -73,8 +80,9 @@ const summarize = async ($: EngineInterface, locale: Locale) => {
     effort: 'low',
     timeoutMs: 30_000,
   })
-  const sections =
-    (reply.isAnswered ? parseSections(reply.text) : undefined) ?? fallbackSections(current, turn, locale.words)
+  const written = reply.isAnswered ? parseSections(reply.text) : undefined
+  if (written === undefined) $.ui.log(`session-brief: Haiku gave no brief: ${whyNoBrief(reply)}`, { to: 'debug' })
+  const sections = written ?? fallbackSections(current, turn, locale.words)
   if (sections === undefined) return
 
   // A /clear or /resume while the model answered started another conversation,
