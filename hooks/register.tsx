@@ -178,7 +178,7 @@ export const register: Register = on => {
   const pane = (terminalColumns: number) =>
     ({
       id: PANE_ID,
-      title: locale.words.paneTitle,
+      title: locale.words.title,
       focus: true,
       closeOnEscape: true,
       columns: Math.max(PANE_MIN_COLUMNS, Math.round(terminalColumns * PANE_SHARE)),

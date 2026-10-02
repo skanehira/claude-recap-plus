@@ -17,7 +17,7 @@ export type Words = {
   continued: string
   details: string
   close: string
-  paneTitle: string
+  title: string
   command: string
 }
 
@@ -35,7 +35,7 @@ const ENGLISH: Words = {
   continued: '(continued)',
   details: 'details',
   close: 'close',
-  paneTitle: 'Session brief',
+  title: 'Session brief',
   command: "Open this session's brief: purpose, status, what was done and decided, what waits on you, what comes next",
 }
 
@@ -53,7 +53,7 @@ const JAPANESE: Words = {
   continued: '(続き)',
   details: '詳細',
   close: '閉じる',
-  paneTitle: 'セッション概要',
+  title: 'セッション概要',
   command: 'このセッションの概要 (目的・現状・やったこと・決定事項・確認待ち・次にやること) をパネルで開く',
 }
 
