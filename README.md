@@ -1,5 +1,3 @@
-<!-- Kind: README (English; the Japanese translation is README.ja.md) -->
-
 # claude-session-brief
 
 [日本語](README.ja.md)
