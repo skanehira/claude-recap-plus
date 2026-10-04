@@ -1,13 +1,11 @@
-# claude-session-brief
+# claude-recap-plus
 
 [English](README.md)
-
-![](./images/d548973e.png)
 
 [Claude Code](https://claude.com/claude-code) の mod です。prompt のすぐ上に、そのセッションの概要を出します。複数のセッションを並べて操作していても、切り替えた先のセッションが何のためのもので、今どこまで進んでいるかが、会話をさかのぼらずに分かります。
 
 ```text
-── セッション概要 ────────────────────────────────────────────────────── b: 詳細
+── recap-plus ────────────────────────────────────────────────────── b: 詳細
 目的: 決済 webhook のハンドラに、バックオフつきの再試行を入れる
 現状: ローカルのテストは通った。プルリクエストを作ってよいか、Claude がユーザー
 の返事を待っている。
@@ -19,8 +17,8 @@
 
 メインの会話 (ユーザーが入力している会話。subagent の会話ではない) のターンが終わるたびに、Haiku が概要を書き直します。材料は、前回の概要、そのターンの依頼、Claude の回答、Claude が出した質問とその回答、そのターンにツールで行った操作です。どの行も画面の幅で切らず、折り返して出します。Haiku が書く各項目は 500 文字までで、それより長いものは `…` で終わります。
 
-- **prompt の上の帯**は、「── セッション概要 ──」の見出しの線で始まり、その下に目的と現状を出します。この線で、帯とその上の行の境目が分かります。「詳細」ボタンは、この線の右端にあります。
-- **`/brief`** を打つと、概要の 6 項目すべてをセッション概要パネル (題が「セッション概要」のパネル) に出します。下のキー設定を足せば ctrl+x b でも開けます。帯の「詳細」ボタンでも開けます。セッション概要パネルの表示中は、帯の内容に残りの項目を加えたものをこのパネルが出しているので、帯は消えます。
+- **prompt の上の帯**は、「── recap-plus ──」の見出しの線で始まり、その下に目的と現状を出します。この線で、帯とその上の行の境目が分かります。「詳細」ボタンは、この線の右端にあります。
+- **`/recap-plus`** を打つと、概要の 6 項目すべてをセッション概要パネル (題が「recap-plus」のパネル) に出します。下のキー設定を足せば ctrl+x b でも開けます。帯の「詳細」ボタンでも開けます。セッション概要パネルの表示中は、帯の内容に残りの項目を加えたものをこのパネルが出しているので、帯は消えます。
 
 | 項目         | 内容                                                                       |
 | ------------ | -------------------------------------------------------------------------- |
@@ -47,25 +45,27 @@
 
 - **Claude Code 2.1.287。** 動作を確かめた版です。mod の機能は early access で、その API はリリースごとに変わることがあります。
 - **hooks が許されていること。** mod は plugin の hooks として動くので、設定や組織のポリシーで hooks を無効にしている環境では動きません。
-- **帯を出すには、ターミナルかデスクトップアプリ。** mod の API が帯を描くのはこの 2 つだけです。VS Code の拡張とモバイルでは、`/brief` のセッション概要パネルだけが使えます (この 2 つでは動作を確かめていません)。
+- **帯を出すには、ターミナルかデスクトップアプリ。** mod の API が帯を描くのはこの 2 つだけです。VS Code の拡張とモバイルでは、`/recap-plus` のセッション概要パネルだけが使えます (この 2 つでは動作を確かめていません)。
 - **Claude Code 専用。** この mod は Claude Code の mod API の上で動き、ほかのものからは読み込まれません。
 
 ## インストール
 
 ```text
-/plugin marketplace add skanehira/claude-session-brief
-/plugin install session-brief@claude-session-brief
+/plugin marketplace add skanehira/claude-recap-plus
+/plugin install recap-plus@claude-recap-plus
 /reload-plugins
 ```
 
-読み込まれたかは、`/br` と打って確かめます。`/brief` が候補に出て、その説明が「このセッションの概要 (目的・現状・やったこと・決定事項・確認待ち・次にやること) をパネルで開く」(`language` が英語なら "Open this session's brief: purpose, status, what was done and decided, what waits on you, what comes next") なら、読み込まれています。`claude plugin list` でも、`session-brief@claude-session-brief` が `Status: ✔ enabled` で出ます。
+読み込まれたかは、`/recap` と打って確かめます。`/recap-plus` が候補に出て、その説明が「recap-plus でこのセッションの概要 (目的・現状・やったこと・決定事項・確認待ち・次にやること) をパネルで開く」(`language` が英語なら "Open recap-plus for this session: purpose, status, what was done and decided, what waits on you, what comes next") なら、読み込まれています。`claude plugin list` でも、`recap-plus@claude-recap-plus` が `Status: ✔ enabled` で出ます。
 
 更新するときは、マーケットプレイスを更新してからプラグインを更新し、Claude Code を起動し直します。
 
 ```bash
-claude plugin marketplace update claude-session-brief
-claude plugin update session-brief@claude-session-brief
+claude plugin marketplace update claude-recap-plus
+claude plugin update recap-plus@claude-recap-plus
 ```
+
+旧名でインストールしている場合は、`/plugin` で旧プラグインを無効にしてからインストールしてください。保存した概要と使用量の累計は移行せず、旧ファイルはそのまま残します。新しいプラグインでは、会話履歴から概要を再生成し、使用量を 0 から数えます。
 
 ## キー操作
 
@@ -94,9 +94,9 @@ claude plugin update session-brief@claude-session-brief
 
 mod は独自のキー操作を定義できないので、ctrl+x b には既存の操作を借りています。`app:cycleDiffBase` は差分パネルの比較基準を切り替える操作で、差分パネルの中では既定で ctrl+x b に割り当てられています。Claude Code がこの操作を自分で処理するのは、差分パネルを開いている間だけです。このため、差分パネルを開いている間の ctrl+x b は、これまでどおり比較基準を切り替えます。差分パネルを閉じていれば、この操作で帯の「詳細」ボタンが押され、セッション概要パネルが開きます。セッション概要パネルの表示中にこの操作をすると、このパネルの「閉じる」ボタンが押され、セッション概要パネルが閉じます。`abovePrompt:toggle` は帯をたたむ Claude Code の操作で、既定では ctrl+x ctrl+a に割り当てられています。ctrl+x i は、この操作に 2 つ目のキーを足すだけです。
 
-ctrl+x b が効くのは、帯かセッション概要パネルが出ている間だけです。最初のターンの前、帯をたたんでいる間、ダイアログの表示中は、この操作に応えるものがありません。帯をたたんでいる間に押すと、`b` が入力欄に入ります。そのときは `/brief` でセッション概要パネルを開きます。
+ctrl+x b が効くのは、帯かセッション概要パネルが出ている間だけです。最初のターンの前、帯をたたんでいる間、ダイアログの表示中は、この操作に応えるものがありません。帯をたたんでいる間に押すと、`b` が入力欄に入ります。そのときは `/recap-plus` でセッション概要パネルを開きます。
 
-セッション概要パネルは、「閉じる」ボタン (このパネルにフォーカスがあるときに `b`) や Esc でも閉じられます。キー設定を足さない場合は、`/brief` でセッション概要パネルを開くか、ctrl+x tab で帯にフォーカスしてから `b` を押します。帯は ctrl+x ctrl+a でたためます。
+セッション概要パネルは、「閉じる」ボタン (このパネルにフォーカスがあるときに `b`) や Esc でも閉じられます。キー設定を足さない場合は、`/recap-plus` でセッション概要パネルを開くか、ctrl+x tab で帯にフォーカスしてから `b` を押します。帯は ctrl+x ctrl+a でたためます。
 
 ## 表示の言語
 
@@ -104,7 +104,7 @@ ctrl+x b が効くのは、帯かセッション概要パネルが出ている�
 
 | `language`                                                                            | 表示                                                                                  | Haiku が書く言語 |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------- |
-| `Japanese`、`日本語`、`ja` のどれかで始まる (大文字と小文字は区別しない。例: `ja-JP`) | 日本語。見出し、ボタン、セッション概要パネル、「(作業中)」などの表示、`/brief` の説明 | 日本語           |
+| `Japanese`、`日本語`、`ja` のどれかで始まる (大文字と小文字は区別しない。例: `ja-JP`) | 日本語。見出し、ボタン、セッション概要パネル、「(作業中)」などの表示、`/recap-plus` の説明 | 日本語           |
 | それ以外の値                                                                          | 英語                                                                                  | 設定した言語     |
 | 設定なし                                                                              | 英語                                                                                  | 英語             |
 
@@ -117,7 +117,7 @@ mod は、利用中の Claude Code のセッションを通じて Haiku を呼�
 - メインの会話のターンが終わるたび。
 - セッションを開いたときと、動いているセッションに mod を初めて読み込んだときや読み直したとき。保存した最新の概要が無く、解析する材料があるときに限ります。
 
-非対話の実行 (`claude -p`) では呼びません。呼び出しを止めるには、mod を無効にします (`/plugin`、または `claude plugin disable session-brief@claude-session-brief`)。Haiku を呼ばずに帯だけを出す設定はありません。
+非対話の実行 (`claude -p`) では呼びません。呼び出しを止めるには、mod を無効にします (`/plugin`、または `claude plugin disable recap-plus@claude-recap-plus`)。Haiku を呼ばずに帯だけを出す設定はありません。
 
 送るのは、セッションのうち次の部分だけです。
 
@@ -149,7 +149,7 @@ Haiku から使える概要が返らなかったとき (API エラー、空の�
 mod は自分の呼び出しを数えます。ストアのセッションごとの 1 件 ([概要の保存先](#概要の保存先)を参照) に、そのセッションで Haiku を呼んだ回数と、その呼び出しで使った入力・出力トークンの累計を持ちます。トークン数は Claude Code が報告する値です。使える概要が返らなかった呼び出しも数えます。すべてのセッションの分を一覧するには、次のコマンドを使います。
 
 ```bash
-jq -r 'to_entries[] | "\(.key)\t\(.value.usage.calls // 0)\t\(.value.usage.inputTokens // 0)\t\(.value.usage.outputTokens // 0)"' ~/.claude/plugins/store/session-brief_*.json
+jq -r 'to_entries[] | "\(.key)\t\(.value.usage.calls // 0)\t\(.value.usage.inputTokens // 0)\t\(.value.usage.outputTokens // 0)"' ~/.claude/plugins/store/recap-plus_*.json
 ```
 
 各行は、キー、呼び出し回数、入力トークン、出力トークンの順です。mod が数え始める前に保存した 1 件は、0 から数えます。呼び出しは、同じ会話の次の概要と一緒にストアへ書き込みます。そのため、書き込む前に終了したプロセスの呼び出しは数えません。呼び出しはセッションと同じ扱いで課金されます。トークン数を金額にするには、[Anthropic の料金ページ](https://www.anthropic.com/pricing#api)にある Haiku の単価を使います。
@@ -171,7 +171,7 @@ mod を入れる前から続いているセッションも、この手順で解�
 
 ### 概要の保存先
 
-mod 専用のストアです。ストアは `~/.claude/plugins/store/` にある、名前が `session-brief_` で始まる JSON ファイルです。mod の読み込み方ごとに別のファイルになります。たとえば `--plugin-dir` で読み込んだときは `session-brief_inline-<hash>.json` です。ファイルはセッションごとに 1 件を `brief:<セッション ID>` というキーで持ちます。1 件の中身は、6 項目、最後のターンの依頼と回答から作った指紋、保存した時刻、Haiku の呼び出し回数とトークン数の累計です ([コストと送る内容](#コストと送る内容)を参照)。新しい順に 200 セッション分を残し、それより古いものはセッションの開始時に消します。
+mod 専用のストアです。ストアは `~/.claude/plugins/store/` にある、名前が `recap-plus_` で始まる JSON ファイルです。mod の読み込み方ごとに別のファイルになります。たとえば `--plugin-dir` で読み込んだときは `recap-plus_inline-<hash>.json` です。ファイルはセッションごとに 1 件を `recap-plus:<セッション ID>` というキーで持ちます。1 件の中身は、6 項目、最後のターンの依頼と回答から作った指紋、保存した時刻、Haiku の呼び出し回数とトークン数の累計です ([コストと送る内容](#コストと送る内容)を参照)。新しい順に 200 セッション分を残し、それより古いものはセッションの開始時に消します。
 
 ### `/clear` すると最初から
 
@@ -185,7 +185,7 @@ mod 専用のストアです。ストアは `~/.claude/plugins/store/` にある
 
 次の順に確かめます。
 
-1. **mod が読み込まれているか。** `/br` と打って、[インストール](#インストール)に書いた説明の `/brief` が候補に出れば、読み込まれています。出なければ、`/plugin` で session-brief が有効か確かめ、`/reload-plugins` を実行します。候補の `/brief` の説明が "Toggle brief-only mode" なら、それは Claude Code に組み込まれ、機能フラグで有効になるコマンドで、mod は自分の `/brief` を登録できていません。その場合は、帯の「詳細」ボタンか ctrl+x b でセッション概要パネルを開きます。
+1. **mod が読み込まれているか。** `/recap` と打って、[インストール](#インストール)に書いた説明の `/recap-plus` が候補に出れば、読み込まれています。出なければ、`/plugin` で recap-plus が有効か確かめ、`/reload-plugins` を実行します。コマンドの登録が拒まれた場合は、帯の「詳細」ボタンか ctrl+x b でセッション概要パネルを開きます。
 2. **ターンが始まったか。** 帯は最初の依頼から出ます。
 3. **何かが帯を隠していないか。** ダイアログ、survey、セッション概要パネルの表示中は、帯は消えます。
 4. **帯をたたんでいないか。** たたんだ帯は「▸ plugin panel hidden · <キー> or click to show」と表示されます。表示されたキー (ctrl+x ctrl+a、上のキー設定を足していれば ctrl+x i) を押すか、クリックすると戻ります。
@@ -196,15 +196,15 @@ mod 専用のストアです。ストアは `~/.claude/plugins/store/` にある
 Claude Code を `claude --debug` で起動し、debug ログから mod の行を探します。
 
 ```bash
-rg 'session-brief:' ~/.claude/debug/latest
+rg 'recap-plus:' ~/.claude/debug/latest
 ```
 
 | 行                                                      | 起きたこと                                                                                                                                                                                                                                                                                                                               | どうするか                                                     |
 | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `session-brief: Haiku gave no brief: <理由>`            | Haiku の返答に使える概要が無かった。mod は代わりの概要を作るか、最終回答に使える行が無ければ概要を変えなかった ([コストと送る内容](#コストと送る内容)を参照)。理由は `api-error status=<HTTP の状態コード。応答が無ければ null> error=<種類>`、`empty-reply`、`aborted` (打ち切り、または 30 秒の時間切れ)、`unreadable-reply` のどれか | レート制限や過負荷はそのうち収まり、次のターンでまた呼ぶ       |
-| `session-brief: summary failed: <エラー>`               | Claude Code が呼び出しを送らなかった。設定で Haiku の使用が許されていない場合などに起きる。概要は変わらない                                                                                                                                                                                                                             | Haiku を使えるようにするか、mod を無効にする                   |
-| `session-brief: /brief was not registered: <エラー>`    | `/brief` の登録が拒まれた。Claude Code に組み込みの `/brief` がある場合などに起きる                                                                                                                                                                                                                                                      | 帯の「詳細」ボタンか ctrl+x b でセッション概要パネルを開く     |
-| `session-brief: following the session failed: <エラー>` | `/clear` や `/resume` の後で、mod が新しいセッションを捉えられなかった                                                                                                                                                                                                                                                                   | Claude Code を終了し、`claude --resume` でセッションを開き直す |
+| `recap-plus: Haiku gave no recap-plus: <理由>`            | Haiku の返答に使える概要が無かった。mod は代わりの概要を作るか、最終回答に使える行が無ければ概要を変えなかった ([コストと送る内容](#コストと送る内容)を参照)。理由は `api-error status=<HTTP の状態コード。応答が無ければ null> error=<種類>`、`empty-reply`、`aborted` (打ち切り、または 30 秒の時間切れ)、`unreadable-reply` のどれか | レート制限や過負荷はそのうち収まり、次のターンでまた呼ぶ       |
+| `recap-plus: summary failed: <エラー>`               | Claude Code が呼び出しを送らなかった。設定で Haiku の使用が許されていない場合などに起きる。概要は変わらない                                                                                                                                                                                                                             | Haiku を使えるようにするか、mod を無効にする                   |
+| `recap-plus: /recap-plus was not registered: <エラー>`    | `/recap-plus` の登録が拒まれた                                                                                                                                                                                                                                                      | 帯の「詳細」ボタンか ctrl+x b でセッション概要パネルを開く     |
+| `recap-plus: following the session failed: <エラー>` | `/clear` や `/resume` の後で、mod が新しいセッションを捉えられなかった                                                                                                                                                                                                                                                                   | Claude Code を終了し、`claude --resume` でセッションを開き直す |
 
 ### 概要が間違っている
 
@@ -214,14 +214,14 @@ rg 'session-brief:' ~/.claude/debug/latest
 2. ストアから、そのセッションの 1 件を消します ([概要の保存先](#概要の保存先)を参照)。まず、ストアの全件をキーと目的の組で一覧し、目的の文からそのセッションのキーを探します。
 
    ```bash
-   jq -r 'to_entries[] | "\(.key)\t\(.value.sections.purpose // "")"' ~/.claude/plugins/store/session-brief_*.json
+   jq -r 'to_entries[] | "\(.key)\t\(.value.sections.purpose // "")"' ~/.claude/plugins/store/recap-plus_*.json
    ```
 
-   キーは、`brief:` にセッション ID を続けたものです。セッション ID は、`~/.claude/projects/` の下にあるそのセッションの transcript ファイルの名前から、`.jsonl` を除いたものです。見つけたキーを `key=` の行に貼り、すべてのストアからその 1 件を消します。
+   キーは、`recap-plus:` にセッション ID を続けたものです。セッション ID は、`~/.claude/projects/` の下にあるそのセッションの transcript ファイルの名前から、`.jsonl` を除いたものです。見つけたキーを `key=` の行に貼り、すべてのストアからその 1 件を消します。
 
    ```bash
    key='<見つけたキー>'
-   for f in ~/.claude/plugins/store/session-brief_*.json; do
+   for f in ~/.claude/plugins/store/recap-plus_*.json; do
      jq --arg key "$key" 'del(.[$key])' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
    done
    ```
@@ -234,20 +234,20 @@ rg 'session-brief:' ~/.claude/debug/latest
 1. プラグインとマーケットプレイスを外します。
 
    ```bash
-   claude plugin uninstall session-brief@claude-session-brief
-   claude plugin marketplace remove claude-session-brief
+   claude plugin uninstall recap-plus@claude-recap-plus
+   claude plugin marketplace remove claude-recap-plus
    ```
 
 2. キー設定を足していたなら、`~/.claude/keybindings.json` から 2 行を消します。
 3. 保存した概要も消すなら、ストアのファイルを消します。
 
    ```bash
-   rm ~/.claude/plugins/store/session-brief_*.json
+   rm ~/.claude/plugins/store/recap-plus_*.json
    ```
 
 ## 開発
 
-`tsc` には TypeScript 5.0 以上が要ります。`tsc` の設定は `.claude-plugin/types/` から読みます。このフォルダは Claude Code がこのフォルダから mod を読み込んだときに書き出すもので、git には入れていません。clone した後に一度 `claude --plugin-dir .` を起動してください。マーケットプレイスからもインストールしているなら、同じ mod が 2 つ読み込まれないよう、開発の間はそちらを無効にします (`claude plugin disable session-brief@claude-session-brief`)。
+`tsc` には TypeScript 5.0 以上が要ります。`tsc` の設定は `.claude-plugin/types/` から読みます。このフォルダは Claude Code がこのフォルダから mod を読み込んだときに書き出すもので、git には入れていません。clone した後に一度 `claude --plugin-dir .` を起動してください。マーケットプレイスからもインストールしているなら、同じ mod が 2 つ読み込まれないよう、開発の間はそちらを無効にします (`claude plugin disable recap-plus@claude-recap-plus`)。
 
 ```bash
 claude plugin validate .claude-plugin/plugin.json   # プラグインを検査する。manifest と hooks module を Claude Code と同じ読み方で読む
