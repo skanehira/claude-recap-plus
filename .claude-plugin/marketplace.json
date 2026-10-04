@@ -1,5 +1,5 @@
 {
-  "name": "claude-session-brief",
+  "name": "claude-recap-plus",
   "owner": {
     "name": "skanehira"
   },
@@ -8,9 +8,9 @@
   },
   "plugins": [
     {
-      "name": "session-brief",
+      "name": "recap-plus",
       "source": "./",
-      "description": "Keeps a brief of the session above the prompt: what it is for and where it stands; /brief adds what was done and decided, what waits on you, and what comes next"
+      "description": "Keeps a recap-plus summary of the session above the prompt: what it is for and where it stands; /recap-plus adds what was done and decided, what waits on you, and what comes next"
     }
   ]
 }

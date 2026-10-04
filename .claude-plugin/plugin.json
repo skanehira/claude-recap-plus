@@ -1,7 +1,7 @@
 {
-  "name": "session-brief",
+  "name": "recap-plus",
   "version": "0.1.0",
-  "description": "Keeps a brief of the session above the prompt: what it is for and where it stands; /brief adds what was done and decided, what waits on you, and what comes next",
+  "description": "Keeps a recap-plus summary of the session above the prompt: what it is for and where it stands; /recap-plus adds what was done and decided, what waits on you, and what comes next",
   "author": {
     "name": "skanehira"
   },
