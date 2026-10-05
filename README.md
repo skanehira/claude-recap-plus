@@ -1,17 +1,10 @@
 # claude-recap-plus
 
-<!-- Document type: User guide -->
-
 [日本語](README.ja.md)
 
 A [Claude Code](https://claude.com/claude-code) mod that shows a session summary right above the prompt. When you switch between sessions, you can see what each is for and where the work stands without scrolling through the conversation.
 
-```text
-── recap-plus ──────────────────────────────────────────────────── b: details
-Purpose: Add retry with backoff to the payment webhook handler
-Status: The tests pass locally. Claude is waiting for your OK to open the pull
-request.
-```
+![369763f2](./images/README/369763f2.png)
 
 ## Requirements
 
