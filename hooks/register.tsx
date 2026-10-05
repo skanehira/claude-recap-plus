@@ -31,6 +31,9 @@ const recapPlus = atom({ plugin: 'recap-plus', key: 'recap-plus' } as const, EMP
 
 const PANE_ID = 'recap-plus'
 
+// The color of the headings: the band's labels and the pane's section titles.
+const HEADING_COLOR = '#ffa500'
+
 // The cells the terminal's ` [-]` mark covers at the band's right edge, and
 // its ` ✕` mark at the top right of a pane.
 const COLLAPSE_MARK_CELLS = 4
@@ -301,7 +304,7 @@ export const register: Register = on => {
         </Box>
         {paneSections(current, locale.words).map(section => (
           <Box flexDirection="column" marginBottom={1}>
-            <Text bold wrap="wrap">
+            <Text bold color={HEADING_COLOR} wrap="wrap">
               {section.title}
             </Text>
             {section.rows.map(row => (
@@ -352,7 +355,10 @@ export const register: Register = on => {
           </Box>
         </Box>
         {bandRows(current, locale.words).map(row => (
-          <Text wrap="wrap">{`${row.label}: ${row.text}`}</Text>
+          <Text wrap="wrap">
+            <Text color={HEADING_COLOR}>{`${row.label}:`}</Text>
+            {` ${row.text}`}
+          </Text>
         ))}
       </Box>
     )

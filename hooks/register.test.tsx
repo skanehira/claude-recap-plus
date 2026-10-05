@@ -145,16 +145,31 @@ const recordPaneOpens = (on: On) => {
   return opened
 }
 
+type DrawnNode = { type: string; props?: Record<string, unknown>; children?: unknown[] }
+const isDrawnNode = (one: unknown): one is DrawnNode => typeof one === 'object' && one !== null && 'type' in one
+
+// The strings a node shows, its nested Texts' included.
+const shownTextOf = (one: unknown): string =>
+  typeof one === 'string' ? one : isDrawnNode(one) ? (one.children ?? []).map(shownTextOf).join('') : ''
+
+// The lines a drawing lays out: every Text not inside another Text. A Text
+// inside one, such as a colored label, is part of that line.
+const linesOf = (one: unknown): DrawnNode[] =>
+  !isDrawnNode(one) ? [] : one.type === 'Text' ? [one] : (one.children ?? []).flatMap(linesOf)
+
+const drawnLinesOf = async ($: Engine, target: ReturnType<typeof bandOn> | ReturnType<typeof paneOn>) => {
+  const ui = await $.ui.mount(target)
+  const lines = linesOf(await ui.drawn())
+  await ui.unmount()
+
+  return lines
+}
+
 const textsOf = async (
   $: Engine,
   target: ReturnType<typeof bandOn> | ReturnType<typeof paneOn>,
-): Promise<{ text: string; wrap: unknown }[]> => {
-  const ui = await $.ui.mount(target)
-  const found = (await ui.findAll({ type: 'Text' })).map(one => ({ text: one.text, wrap: one.props.wrap }))
-  await ui.unmount()
-
-  return found
-}
+): Promise<{ text: string; wrap: unknown }[]> =>
+  (await drawnLinesOf($, target)).map(one => ({ text: shownTextOf(one), wrap: one.props?.wrap }))
 
 // Every line the band draws, its header included: what a test that expects
 // no band compares, so a header drawn alone would not pass for nothing.
@@ -219,6 +234,15 @@ for (const { settings, title, purpose, status } of BAND_LANGUAGES) {
   })
 }
 
+const HEADING_COLOR = '#ffa500'
+
+// One band row as drawn: its label and colon in orange, then its text.
+const drawnBandRow = (label: string, text: string) => ({
+  type: 'Text',
+  props: { wrap: 'wrap' },
+  children: [{ type: 'Text', props: { color: HEADING_COLOR }, children: [`${label}:`] }, ` ${text}`],
+})
+
 // The band as drawn: a header row of the dim title, a box keeping one row of
 // a rule as wide as the band, and the details button; the purpose and the
 // status below it, each the band's full width.
@@ -252,13 +276,13 @@ const drawnBand = (columns: number) => ({
         },
       ],
     },
-    { type: 'Text', props: { wrap: 'wrap' }, children: [`Purpose: ${RECAP_PLUS.purpose}`] },
-    { type: 'Text', props: { wrap: 'wrap' }, children: [`Status: ${RECAP_PLUS.status}`] },
+    drawnBandRow('Purpose', RECAP_PLUS.purpose),
+    drawnBandRow('Status', RECAP_PLUS.status),
   ],
 })
 
 for (const columns of [120, 80]) {
-  test(`帯の幅が ${columns} 桁なら、見出しの行に薄い色の題・1 行に切り取った ${columns} 桁の線・詳細ボタンを並べ、その下に目的と現状を全幅で出す`, async ($, on) => {
+  test(`帯の幅が ${columns} 桁なら、見出しの行に薄い色の題・1 行に切り取った ${columns} 桁の線・詳細ボタンを並べ、その下にオレンジのラベルつきで目的と現状を全幅で出す`, async ($, on) => {
     const clock = mock.clock(on, { now: START })
     standInForEngine(on)
     recordModelCalls(on)
@@ -285,7 +309,11 @@ test('ターンの実行中は現状に (working) を付け、前回の内容を
   await runTurn($, clock, 'パネルを作りたい', '作りました', 't1')
   await $.turn.start({ text: '次の依頼', turnId: 't2' })
 
-  expect(await bandRows($)).toEqual([`Purpose: ${RECAP_PLUS.purpose}`, `Status (working): ${RECAP_PLUS.status}`])
+  // The (working) mark is part of the status label, so it is orange too.
+  expect((await drawnLinesOf($, bandOn('terminal'))).slice(BAND_HEADER_TEXTS)).toEqual([
+    drawnBandRow('Purpose', RECAP_PLUS.purpose),
+    drawnBandRow('Status (working)', RECAP_PLUS.status),
+  ])
 })
 
 test('最初のターンの前と survey の表示中は帯を描かず、最初の概要までは (after the first turn) を出す', async ($, on) => {
@@ -333,6 +361,35 @@ test('/recap-plus の Pane に 6 項目を見出しつきで全文で出す', as
       'Publish the repository once approved',
     ])
     expect(texts.every(one => one.wrap === 'wrap'), surface).toBe(true)
+  }
+})
+
+test('/recap-plus の Pane では 6 項目の見出しをオレンジの太字で、本文を色なしで出す', async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  standInForEngine(on)
+  recordModelCalls(on, () => recapPlusReply({ ...RECAP_PLUS, done: ['Wrote the mod'], decisions: [], pending: [] }))
+
+  await startInteractive($)
+  await runTurn($, clock, 'パネルを作りたい', '作りました', 't1')
+
+  const heading = (text: string) => ({ text, props: { bold: true, color: HEADING_COLOR, wrap: 'wrap' } })
+  const body = (text: string) => ({ text, props: { wrap: 'wrap' } })
+  for (const surface of SURFACES) {
+    const lines = (await drawnLinesOf($, paneOn(surface))).map(one => ({ text: shownTextOf(one), props: one.props }))
+    expect(lines, surface).toEqual([
+      heading('Purpose'),
+      body(RECAP_PLUS.purpose),
+      heading('Status'),
+      body(RECAP_PLUS.status),
+      heading('Done'),
+      body('- Wrote the mod'),
+      heading('Decisions'),
+      body('(none)'),
+      heading('Waiting on you'),
+      body('(none)'),
+      heading('Next'),
+      body(RECAP_PLUS.next),
+    ])
   }
 })
 
