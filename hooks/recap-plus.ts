@@ -442,10 +442,13 @@ export const storedRecapPlusOf = (value: unknown): StoredRecapPlus | undefined =
 export const setSections = (recapPlus: RecapPlus, sections: Sections, turn: number): RecapPlus =>
   turn < recapPlus.sectionsTurn ? recapPlus : { ...recapPlus, sections, sectionsTurn: turn }
 
-/** The band's two rows: the purpose, and the status, marked while a turn runs. */
-export const bandRows = (recapPlus: RecapPlus, words: Words): string[] => [
-  `${words.purpose}: ${recapPlus.sections?.purpose ?? words.notYet}`,
-  `${words.status}${recapPlus.isWorking ? ` ${words.working}` : ''}: ${recapPlus.sections?.status ?? words.notYet}`,
+/** The band's two rows, each a label and its text: the purpose, and the status, marked while a turn runs. */
+export const bandRows = (recapPlus: RecapPlus, words: Words): { label: string; text: string }[] => [
+  { label: words.purpose, text: recapPlus.sections?.purpose ?? words.notYet },
+  {
+    label: `${words.status}${recapPlus.isWorking ? ` ${words.working}` : ''}`,
+    text: recapPlus.sections?.status ?? words.notYet,
+  },
 ]
 
 /** The pane's sections, each a heading over its full text. */

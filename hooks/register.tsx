@@ -321,7 +321,6 @@ export const register: Register = on => {
     // would only repeat them in a narrow column, many rows tall.
     if ((await $.ui.panes()).some(one => one.id === PANE_ID && one.isShown)) return next(e)
 
-    const [purpose, status] = bandRows(current, locale.words)
     const { Box, Button, Text } = $.ui.resolve(e)
 
     return (
@@ -352,8 +351,9 @@ export const register: Register = on => {
             />
           </Box>
         </Box>
-        <Text wrap="wrap">{purpose}</Text>
-        <Text wrap="wrap">{status}</Text>
+        {bandRows(current, locale.words).map(row => (
+          <Text wrap="wrap">{`${row.label}: ${row.text}`}</Text>
+        ))}
       </Box>
     )
   })
